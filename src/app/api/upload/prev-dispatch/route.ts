@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes)
 
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(buffer)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await workbook.xlsx.load(buffer as any)
 
     const worksheet = workbook.getWorksheet(1)
     if (!worksheet) {

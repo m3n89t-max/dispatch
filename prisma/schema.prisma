@@ -9,13 +9,44 @@ datasource db {
 // 기사/팀 정보
 model Driver {
   id              String       @id @default(cuid())
-  teamCode        String       @unique
-  teamName        String
-  route           String       // "0601" | "0602"
+  teamCode        String       @unique  // 시퀀스ID
+  teamName        String               // 이름 (주기사명)
+  route           String               // "0601" | "0602" — 배차 내부 권역 기준
   status          DriverStatus @default(ACTIVE)
-  contractEndDate DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+
+  // 기본 정보
+  center           String?   // 센터명
+  vehicleNumber    String?   // 차량번호
+  vehicleType      String?   // "영업용" | "자가용"
+  vehicleStructure String?   // "TOP" | "카고"
+
+  // 셀 정보
+  cellName String? // 셀명
+  cellRole String? // "셀리더" | "셀원"
+
+  // 근무 형태
+  residency String? // "상주" | "비상주"
+
+  // 계약
+  contractDone         Boolean   @default(false) // 계약완료 여부
+  contractExpectedDate DateTime?                 // 계약예상일시
+  contractEndDate      DateTime?                 // 계약종료일
+
+  // 보수교육
+  safetyEduDone Boolean   @default(false) // 보수교육완료 여부
+  safetyEduDate DateTime?                 // 보수교육일시
+
+  // 전문기사 (보조인력)
+  expertSecured      Boolean   @default(false) // 전문기사 확보 여부
+  expertExpectedDate DateTime?                 // 전문기사 채용예상일시
+  expertRelation     String?                   // 전문기사 관계 (예: 가족, 지인 등)
+
+  // 타센터 지원
+  canSupportOther    Boolean @default(false) // 타센터 지원 가능 여부
+  supportableCenters String?                 // 지원 가능 센터 목록 (예: "서울, 부산")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   dispatches       Dispatch[]
   performances     DailyPerformance[]
@@ -43,10 +74,10 @@ model DispatchUpload {
 
 // 배차 항목
 model Dispatch {
-  id           String         @id @default(cuid())
-  dispatchDate DateTime       // 배차일
+  id           String          @id @default(cuid())
+  dispatchDate DateTime        // 배차일
   driverId     String
-  driver       Driver         @relation(fields: [driverId], references: [id])
+  driver       Driver          @relation(fields: [driverId], references: [id])
   uploadId     String?
   upload       DispatchUpload? @relation(fields: [uploadId], references: [id])
 
@@ -58,8 +89,8 @@ model Dispatch {
 
   // 계산값
   installCount   Int    @default(0) // 설치대수
-  completedCount Int?   // 실제 완료
-  deliveryRate   Float? // 납기유지율
+  completedCount Int?               // 실제 완료
+  deliveryRate   Float?             // 납기유지율
 
   dispatchType DispatchType @default(NORMAL)
   area         String       // "0601" | "0602"
@@ -78,9 +109,9 @@ enum DispatchType {
 
 // 배차 상세 아이템 (모델별)
 model DispatchItem {
-  id           String    @id @default(cuid())
-  dispatchId   String
-  dispatch     Dispatch  @relation(fields: [dispatchId], references: [id])
+  id         String   @id @default(cuid())
+  dispatchId String
+  dispatch   Dispatch @relation(fields: [dispatchId], references: [id])
 
   matnr        String    // 모델코드
   augru        String?   // 주문사유
@@ -94,7 +125,7 @@ enum ModelType {
   WALL_MOUNT // 벽걸이
   STAND      // 스탠드
   HOME_MULTI // 홈멀티
-  SYSTEM_AC  // 시스템에어컨 (제외)
+  SYSTEM_AC  // 시스템에어컨 (설치대수 1, 별도 표기)
   PRE_VISIT  // 사전방문 (제외)
   UNKNOWN
 }
@@ -157,10 +188,10 @@ model LeaveRequest {
 }
 
 enum LeaveReason {
-  PERSONAL  // 개인 일정
-  HOSPITAL  // 병원
-  VEHICLE   // 차량 정비
-  OTHER     // 기타
+  PERSONAL // 개인 일정
+  HOSPITAL // 병원
+  VEHICLE  // 차량 정비
+  OTHER    // 기타
 }
 
 enum RequestStatus {
