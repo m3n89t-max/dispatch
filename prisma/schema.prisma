@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 기사/팀 정보
+model Driver {
+  id              String       @id @default(cuid())
+  teamCode        String       @unique
+  teamName        String
+  route           String       // "0601" | "0602"
+  status          DriverStatus @default(ACTIVE)
+  contractEndDate DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  dispatches       Dispatch[]
+  performances     DailyPerformance[]
+  safetyViolations SafetyViolation[]
+  leaveRequests    LeaveRequest[]
+}
+
+enum DriverStatus {
+  ACTIVE
+  SUSPENDED
+  CONTRACT_ENDED
+  ON_LEAVE
+}
+
+// 전일 배차 (업로드된 원본)
+model DispatchUpload {
+  id         String   @id @default(cuid())
+  uploadDate DateTime // 배차 기준일
+  fileName   String
+  rawData    Json     // 원본 데이터 보존
+  createdAt  DateTime @default(now())
+
+  dispatches Dispatch[]
+}
+
+// 배차 항목
+model Dispatch {
+  id           String         @id @default(cuid())
+  dispatchDate DateTime       // 배차일
+  driverId     String
+  driver       Driver         @relation(fields: [driverId], references: [id])
+  uploadId     String?
+  upload       DispatchUpload? @relation(fields: [uploadId], references: [id])
+
+  // 전일 배차
+  prevCount Int @default(0) // 전일 배차 대수
+
+  // 익일 확정
+  confirmedCount Int? // 익일 확정 대수
+
+  // 계산값
+  installCount   Int    @default(0) // 설치대수
+  completedCount Int?   // 실제 완료
+  deliveryRate   Float? // 납기유지율
+
+  dispatchType DispatchType @default(NORMAL)
+  area         String       // "0601" | "0602"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items DispatchItem[]
+}
+
+enum DispatchType {
+  NORMAL
+  ADDITIONAL
+  MINIMUM_GUARANTEED
+}
+
+// 배차 상세 아이템 (모델별)
+model DispatchItem {
+  id           String    @id @default(cuid())
+  dispatchId   String
+  dispatch     Dispatch  @relation(fields: [dispatchId], references: [id])
+
+  matnr        String    // 모델코드
+  augru        String?   // 주문사유
+  modelType    ModelType
+  installCount Int       @default(0)
+
+  createdAt DateTime @default(now())
+}
+
+enum ModelType {
+  WALL_MOUNT // 벽걸이
+  STAND      // 스탠드
+  HOME_MULTI // 홈멀티
+  SYSTEM_AC  // 시스템에어컨 (제외)
+  PRE_VISIT  // 사전방문 (제외)
+  UNKNOWN
+}
+
+// 일별 실적
+model DailyPerformance {
+  id       String   @id @default(cuid())
+  driverId String
+  driver   Driver   @relation(fields: [driverId], references: [id])
+  perfDate DateTime
+
+  // 수동 입력
+  completionRate Float? // 완료율
+  op2Score       Float? // OP2
+  npsScore       Float? // NPS
+  defectRate     Float? // 불량률
+
+  // 자동 계산
+  deliveryConfirmRate  Float? // 납기확정률
+  deliveryMaintainRate Float? // 납기유지율
+  totalScore           Float? // 배차 점수
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([driverId, perfDate])
+}
+
+// 안전 위반
+model SafetyViolation {
+  id            String        @id @default(cuid())
+  driverId      String
+  driver        Driver        @relation(fields: [driverId], references: [id])
+  violationType ViolationType
+  occurredAt    DateTime
+  action        String?       // 조치 내용
+  resolved      Boolean       @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+enum ViolationType {
+  NO_HELMET      // 안전모 미착용
+  NO_SEATBELT    // 안전벨트 미착용
+  NO_SAFETY_HOOK // 안전고리 미착용
+}
+
+// 배차 제외 요청
+model LeaveRequest {
+  id          String        @id @default(cuid())
+  driverId    String
+  driver      Driver        @relation(fields: [driverId], references: [id])
+  requestDate DateTime
+  reason      LeaveReason
+  note        String?
+  status      RequestStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum LeaveReason {
+  PERSONAL  // 개인 일정
+  HOSPITAL  // 병원
+  VEHICLE   // 차량 정비
+  OTHER     // 기타
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// 사용자 (권한 관리)
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  role      UserRole @default(VIEWER)
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  ADMIN      // 관리자
+  DISPATCH   // 배차담당
+  DATA_ENTRY // 입력자
+  VIEWER     // 조회
+}
