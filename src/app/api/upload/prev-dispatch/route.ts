@@ -4,7 +4,6 @@ import * as ExcelJS from 'exceljs'
 import { judgeModelType, getInstallCount } from '@/lib/modelJudge'
 
 // SAP 납기전 배차 엑셀 — 컬럼 위치를 고정하지 않고 값 스캔으로 감지
-// (SAP 리포트 종류에 따라 컬럼 수/순서가 다를 수 있음)
 
 // 모델코드 자동 감지: AR/AF/AC/L- 로 시작하는 값
 function extractMatnr(values: unknown[]): string {
@@ -38,8 +37,9 @@ function extractDeliveryNo(values: unknown[]): string {
   return ''
 }
 
-// 고객명(기사명): 한글이 포함된 값 (마지막 발견값 우선)
-function extractCustomerName(values: unknown[]): string {
+// 차량번호: 한글이 포함된 값 (마지막 발견값 우선)
+// SAP 리스트에는 기사명 없이 차량번호만 있으므로, 이 값으로 Driver DB 매칭
+function extractVehicleNo(values: unknown[]): string {
   let found = ''
   for (const v of values) {
     const s = String(v ?? '').trim()
@@ -75,9 +75,27 @@ export async function POST(request: NextRequest) {
       headers[colNumber] = String(cell.value ?? '').trim()
     })
 
+    // DB에서 기사 목록 로드 → 차량번호로 매칭
+    const allDrivers = await prisma.driver.findMany({
+      select: { teamCode: true, teamName: true, vehicleNumber: true },
+    })
+    // 차량번호 → 기사 매핑 (공백 무시, 대소문자 무시)
+    const vehicleMap = new Map<string, { teamCode: string; teamName: string }>()
+    for (const d of allDrivers) {
+      if (d.vehicleNumber) {
+        vehicleMap.set(d.vehicleNumber.replace(/\s/g, '').toUpperCase(), {
+          teamCode: d.teamCode,
+          teamName: d.teamName,
+        })
+      }
+    }
+
     interface RowData {
       deliveryNo: string
-      customerName: string
+      vehicleNo: string      // SAP 원본 차량번호
+      driverName: string     // DB 매칭된 기사명 (없으면 차량번호 그대로)
+      teamCode: string       // DB 매칭된 팀코드
+      matched: boolean       // DB 매칭 여부
       matnr: string
       augru: string
       rawValues: (string | null)[]
@@ -85,19 +103,26 @@ export async function POST(request: NextRequest) {
 
     const rows: RowData[] = []
     worksheet.eachRow((row: ExcelJS.Row, rowNumber: number) => {
-      if (rowNumber === 1) return // 헤더 스킵
+      if (rowNumber === 1) return
       const vals = row.values as unknown[]
+
+      const vehicleNo = extractVehicleNo(vals)
+      const vehicleKey = vehicleNo.replace(/\s/g, '').toUpperCase()
+      const driver = vehicleMap.get(vehicleKey)
 
       rows.push({
         deliveryNo: extractDeliveryNo(vals),
-        customerName: extractCustomerName(vals),
+        vehicleNo,
+        driverName: driver ? driver.teamName : vehicleNo,
+        teamCode: driver ? driver.teamCode : '',
+        matched: !!driver,
         matnr: extractMatnr(vals),
         augru: extractAugru(vals),
         rawValues: vals.slice(1).map(v => v == null ? null : String(v)),
       })
     })
 
-    // undefined → null 정리 후 저장 (Prisma JSON 필드는 undefined 불허)
+    // undefined → null 정리 후 저장
     const cleanRows = JSON.parse(JSON.stringify(rows, (_, v) => v === undefined ? null : v))
 
     const upload = await prisma.dispatchUpload.create({
@@ -116,7 +141,10 @@ export async function POST(request: NextRequest) {
       const installCount = getInstallCount(modelType as Parameters<typeof getInstallCount>[0])
       return {
         deliveryNo: row.deliveryNo,
-        customerName: row.customerName,
+        vehicleNo: row.vehicleNo,
+        driverName: row.driverName,
+        teamCode: row.teamCode,
+        matched: row.matched,
         matnr: row.matnr,
         augru: row.augru,
         modelType,
@@ -127,7 +155,10 @@ export async function POST(request: NextRequest) {
     // Delivery 단위 집계
     const deliveryMap: Record<string, {
       deliveryNo: string
-      customerName: string
+      vehicleNo: string
+      driverName: string
+      teamCode: string
+      matched: boolean
       totalInstall: number
       itemCount: number
       wallMount: number
@@ -144,7 +175,10 @@ export async function POST(request: NextRequest) {
       if (!deliveryMap[key]) {
         deliveryMap[key] = {
           deliveryNo: item.deliveryNo,
-          customerName: item.customerName,
+          vehicleNo: item.vehicleNo,
+          driverName: item.driverName,
+          teamCode: item.teamCode,
+          matched: item.matched,
           totalInstall: 0,
           itemCount: 0,
           wallMount: 0,
@@ -168,9 +202,12 @@ export async function POST(request: NextRequest) {
       else d.unknown++
     }
 
-    // 기사(고객)별 집계
-    const customerMap: Record<string, {
-      customerName: string
+    // 기사별 집계 (teamCode 또는 vehicleNo 기준)
+    const driverMap: Record<string, {
+      vehicleNo: string
+      driverName: string
+      teamCode: string
+      matched: boolean
       totalInstall: number
       deliveryCount: number
       wallMount: number
@@ -182,10 +219,14 @@ export async function POST(request: NextRequest) {
     }> = {}
 
     for (const d of Object.values(deliveryMap)) {
-      const key = d.customerName || 'UNKNOWN'
-      if (!customerMap[key]) {
-        customerMap[key] = {
-          customerName: d.customerName,
+      // 매칭된 경우 teamCode, 미매칭이면 vehicleNo를 key로 사용
+      const key = d.teamCode || d.vehicleNo || 'UNKNOWN'
+      if (!driverMap[key]) {
+        driverMap[key] = {
+          vehicleNo: d.vehicleNo,
+          driverName: d.driverName,
+          teamCode: d.teamCode,
+          matched: d.matched,
           totalInstall: 0,
           deliveryCount: 0,
           wallMount: 0,
@@ -196,7 +237,7 @@ export async function POST(request: NextRequest) {
           moveInstall: 0,
         }
       }
-      const c = customerMap[key]
+      const c = driverMap[key]
       c.totalInstall += d.totalInstall
       c.deliveryCount++
       c.wallMount += d.wallMount
@@ -207,16 +248,24 @@ export async function POST(request: NextRequest) {
       c.moveInstall += d.moveInstall
     }
 
+    // 미매칭 차량번호 목록
+    const unmatchedVehicles = [...new Set(
+      rows.filter(r => !r.matched && r.vehicleNo).map(r => r.vehicleNo)
+    )]
+
     return NextResponse.json({
       success: true,
       uploadId: upload.id,
       totalRows: rows.length,
       deliveryCount: Object.keys(deliveryMap).length,
-      customerCount: Object.keys(customerMap).length,
+      driverCount: Object.keys(driverMap).length,
+      unmatchedVehicles,
       headers,
       items: processedItems,
       deliverySummary: Object.values(deliveryMap),
-      customerSummary: Object.values(customerMap),
+      driverSummary: Object.values(driverMap).sort((a, b) =>
+        b.totalInstall - a.totalInstall
+      ),
     })
 
   } catch (error) {

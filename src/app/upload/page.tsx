@@ -5,7 +5,10 @@ import Link from 'next/link'
 
 interface ProcessedItem {
   deliveryNo: string
-  customerName: string
+  vehicleNo: string
+  driverName: string
+  teamCode: string
+  matched: boolean
   matnr: string
   augru: string
   modelType: string
@@ -14,7 +17,10 @@ interface ProcessedItem {
 
 interface DeliverySummary {
   deliveryNo: string
-  customerName: string
+  vehicleNo: string
+  driverName: string
+  teamCode: string
+  matched: boolean
   totalInstall: number
   itemCount: number
   wallMount: number
@@ -26,8 +32,11 @@ interface DeliverySummary {
   unknown: number
 }
 
-interface CustomerSummary {
-  customerName: string
+interface DriverSummary {
+  vehicleNo: string
+  driverName: string
+  teamCode: string
+  matched: boolean
   totalInstall: number
   deliveryCount: number
   wallMount: number
@@ -43,10 +52,11 @@ interface UploadResult {
   uploadId: string
   totalRows: number
   deliveryCount: number
-  customerCount: number
+  driverCount: number
+  unmatchedVehicles: string[]
   items: ProcessedItem[]
   deliverySummary: DeliverySummary[]
-  customerSummary: CustomerSummary[]
+  driverSummary: DriverSummary[]
 }
 
 const MODEL_TYPE_LABELS: Record<string, string> = {
@@ -66,7 +76,7 @@ const MODEL_TYPE_CLASSES: Record<string, string> = {
   SYSTEM_AC: 'bg-gray-200 text-gray-700',
   PRE_VISIT: 'bg-orange-100 text-orange-700',
   MOVE_INSTALL: 'bg-yellow-100 text-yellow-700',
-  UNKNOWN: 'bg-red-50 text-red-400',
+  UNKNOWN: 'bg-red-50 text-red-300',
 }
 
 function DeliveryTypeTag({ d }: { d: DeliverySummary }) {
@@ -84,7 +94,7 @@ export default function UploadPage() {
   const [result, setResult] = useState<UploadResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'customer' | 'delivery' | 'items'>('customer')
+  const [activeTab, setActiveTab] = useState<'driver' | 'delivery' | 'items'>('driver')
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,27 +144,17 @@ export default function UploadPage() {
               />
               {file && (
                 <p className="mt-2 text-sm text-green-700 font-medium">
-                  선택된 파일: {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                  {file.name} ({(file.size / 1024).toFixed(1)} KB)
                 </p>
               )}
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm text-blue-800">
-              <strong className="block mb-2">SAP 엑셀 컬럼 형식:</strong>
-              <div className="grid grid-cols-4 md:grid-cols-7 gap-2 text-xs">
-                {['A: Delivery', 'B: Shipping Point', 'C: S.Org', 'D: Material', 'E: Qty', 'F: Unit', 'G: Customer'].map(col => (
-                  <span key={col} className="bg-white rounded px-2 py-1 border border-blue-200">{col}</span>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-blue-600">
-                모델코드(AR/AF/AC/L-)는 자동 감지됩니다.
-              </p>
+            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
+              <strong>자동 감지:</strong> Delivery 번호(73으로 시작 10자리) · 모델코드(AR/AF/AC/L-) · 차량번호(한글 포함) → DB 기사명 매칭
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
-                {error}
-              </div>
+              <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{error}</div>
             )}
 
             <button
@@ -174,7 +174,8 @@ export default function UploadPage() {
               <h3 className="font-semibold text-gray-700">처리 완료</h3>
             </div>
 
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            {/* 요약 카드 */}
+            <div className="grid grid-cols-4 gap-4 mb-4">
               <div className="bg-green-50 rounded p-3 text-center">
                 <div className="text-2xl font-bold text-green-600">{result.totalRows}</div>
                 <div className="text-xs text-gray-500 mt-1">전체 행</div>
@@ -184,52 +185,57 @@ export default function UploadPage() {
                 <div className="text-xs text-gray-500 mt-1">배송건수</div>
               </div>
               <div className="bg-purple-50 rounded p-3 text-center">
-                <div className="text-2xl font-bold text-purple-600">{result.customerCount}</div>
+                <div className="text-2xl font-bold text-purple-600">{result.driverCount}</div>
                 <div className="text-xs text-gray-500 mt-1">기사수</div>
               </div>
               <div className="bg-orange-50 rounded p-3 text-center">
                 <div className="text-2xl font-bold text-orange-600">
-                  {result.customerSummary.reduce((s, c) => s + c.totalInstall, 0)}
+                  {result.driverSummary.reduce((s, d) => s + d.totalInstall, 0)}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">총 설치대수</div>
               </div>
             </div>
 
-            {/* Tab navigation */}
+            {/* 미매칭 차량번호 경고 */}
+            {result.unmatchedVehicles.length > 0 && (
+              <div className="bg-yellow-50 border border-yellow-300 rounded p-3 mb-4 text-sm">
+                <strong className="text-yellow-700">⚠ DB 미매칭 차량번호 ({result.unmatchedVehicles.length}개)</strong>
+                <p className="text-yellow-600 text-xs mt-1">
+                  {result.unmatchedVehicles.join(', ')} — 기사 관리 페이지에서 차량번호를 등록하세요
+                </p>
+              </div>
+            )}
+
+            {/* 탭 */}
             <div className="flex border-b mb-4">
-              <button
-                onClick={() => setActiveTab('customer')}
+              <button onClick={() => setActiveTab('driver')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  activeTab === 'customer' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                기사별 요약 ({result.customerSummary?.length || 0}명)
+                  activeTab === 'driver' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}>
+                기사별 요약 ({result.driverSummary.length}명)
               </button>
-              <button
-                onClick={() => setActiveTab('delivery')}
+              <button onClick={() => setActiveTab('delivery')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                   activeTab === 'delivery' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                배송건별 ({result.deliverySummary?.length || 0}건)
+                }`}>
+                배송건별 ({result.deliverySummary.length}건)
               </button>
-              <button
-                onClick={() => setActiveTab('items')}
+              <button onClick={() => setActiveTab('items')}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                   activeTab === 'items' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                행별 상세 ({result.items?.length || 0}건)
+                }`}>
+                행별 상세 ({result.items.length}건)
               </button>
             </div>
 
             {/* 기사별 요약 */}
-            {activeTab === 'customer' && result.customerSummary && (
+            {activeTab === 'driver' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border px-3 py-2 text-left">기사명</th>
+                      <th className="border px-3 py-2 text-left text-xs text-gray-500">차량번호</th>
                       <th className="border px-3 py-2 text-right">배송건</th>
                       <th className="border px-3 py-2 text-right font-bold">설치대수</th>
                       <th className="border px-3 py-2 text-center text-xs">벽걸이</th>
@@ -241,47 +247,37 @@ export default function UploadPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {result.customerSummary
-                      .sort((a, b) => b.totalInstall - a.totalInstall)
-                      .map((c, i) => (
-                        <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                          <td className="border px-3 py-2 font-medium">{c.customerName || '-'}</td>
-                          <td className="border px-3 py-2 text-right">{c.deliveryCount}</td>
-                          <td className="border px-3 py-2 text-right font-bold text-green-700 text-base">{c.totalInstall}</td>
-                          <td className="border px-3 py-2 text-center">{c.wallMount > 0 ? <span className="text-blue-600 font-medium">{c.wallMount}</span> : <span className="text-gray-300">-</span>}</td>
-                          <td className="border px-3 py-2 text-center">{c.stand > 0 ? <span className="text-green-600 font-medium">{c.stand}</span> : <span className="text-gray-300">-</span>}</td>
-                          <td className="border px-3 py-2 text-center">{c.homeMulti > 0 ? <span className="text-purple-600 font-medium">{c.homeMulti}</span> : <span className="text-gray-300">-</span>}</td>
-                          <td className="border px-3 py-2 text-center">{c.systemAc > 0 ? <span className="text-gray-600 font-medium">{c.systemAc}</span> : <span className="text-gray-300">-</span>}</td>
-                          <td className="border px-3 py-2 text-center">{c.moveInstall > 0 ? <span className="text-yellow-600 font-medium">{c.moveInstall}</span> : <span className="text-gray-300">-</span>}</td>
-                          <td className="border px-3 py-2 text-center">{c.preVisit > 0 ? <span className="text-orange-600 font-medium">{c.preVisit}</span> : <span className="text-gray-300">-</span>}</td>
-                        </tr>
+                    {result.driverSummary.map((d, i) => (
+                      <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
+                        <td className="border px-3 py-2 font-medium">
+                          {d.driverName}
+                          {!d.matched && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
+                        </td>
+                        <td className="border px-3 py-2 text-xs text-gray-400">{d.vehicleNo}</td>
+                        <td className="border px-3 py-2 text-right">{d.deliveryCount}</td>
+                        <td className="border px-3 py-2 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
+                        <td className="border px-3 py-2 text-center">{d.wallMount > 0 ? <span className="text-blue-600 font-medium">{d.wallMount}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="border px-3 py-2 text-center">{d.stand > 0 ? <span className="text-green-600 font-medium">{d.stand}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="border px-3 py-2 text-center">{d.homeMulti > 0 ? <span className="text-purple-600 font-medium">{d.homeMulti}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="border px-3 py-2 text-center">{d.systemAc > 0 ? <span className="text-gray-600 font-medium">{d.systemAc}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="border px-3 py-2 text-center">{d.moveInstall > 0 ? <span className="text-yellow-600 font-medium">{d.moveInstall}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="border px-3 py-2 text-center">{d.preVisit > 0 ? <span className="text-orange-600 font-medium">{d.preVisit}</span> : <span className="text-gray-300">-</span>}</td>
+                      </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="bg-green-50 font-bold">
-                      <td className="border px-3 py-2">합계</td>
+                      <td className="border px-3 py-2" colSpan={2}>합계</td>
                       <td className="border px-3 py-2 text-right">{result.deliveryCount}</td>
                       <td className="border px-3 py-2 text-right text-green-700 text-base">
-                        {result.customerSummary.reduce((s, c) => s + c.totalInstall, 0)}
+                        {result.driverSummary.reduce((s, d) => s + d.totalInstall, 0)}
                       </td>
-                      <td className="border px-3 py-2 text-center text-blue-600">
-                        {result.customerSummary.reduce((s, c) => s + c.wallMount, 0) || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center text-green-600">
-                        {result.customerSummary.reduce((s, c) => s + c.stand, 0) || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center text-purple-600">
-                        {result.customerSummary.reduce((s, c) => s + c.homeMulti, 0) || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center text-gray-600">
-                        {result.customerSummary.reduce((s, c) => s + c.systemAc, 0) || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center text-yellow-600">
-                        {result.customerSummary.reduce((s, c) => s + c.moveInstall, 0) || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center text-orange-600">
-                        {result.customerSummary.reduce((s, c) => s + c.preVisit, 0) || '-'}
-                      </td>
+                      <td className="border px-3 py-2 text-center text-blue-600">{result.driverSummary.reduce((s, d) => s + d.wallMount, 0) || '-'}</td>
+                      <td className="border px-3 py-2 text-center text-green-600">{result.driverSummary.reduce((s, d) => s + d.stand, 0) || '-'}</td>
+                      <td className="border px-3 py-2 text-center text-purple-600">{result.driverSummary.reduce((s, d) => s + d.homeMulti, 0) || '-'}</td>
+                      <td className="border px-3 py-2 text-center text-gray-600">{result.driverSummary.reduce((s, d) => s + d.systemAc, 0) || '-'}</td>
+                      <td className="border px-3 py-2 text-center text-yellow-600">{result.driverSummary.reduce((s, d) => s + d.moveInstall, 0) || '-'}</td>
+                      <td className="border px-3 py-2 text-center text-orange-600">{result.driverSummary.reduce((s, d) => s + d.preVisit, 0) || '-'}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -289,28 +285,31 @@ export default function UploadPage() {
             )}
 
             {/* 배송건별 */}
-            {activeTab === 'delivery' && result.deliverySummary && (
+            {activeTab === 'delivery' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border px-3 py-2 text-left">Delivery</th>
                       <th className="border px-3 py-2 text-left">기사명</th>
+                      <th className="border px-3 py-2 text-left text-xs text-gray-500">차량번호</th>
                       <th className="border px-3 py-2 text-center">유형</th>
                       <th className="border px-3 py-2 text-right font-bold">설치대수</th>
-                      <th className="border px-3 py-2 text-right text-xs">행수</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.deliverySummary
-                      .sort((a, b) => a.customerName.localeCompare(b.customerName) || a.deliveryNo.localeCompare(b.deliveryNo))
+                      .sort((a, b) => a.driverName.localeCompare(b.driverName) || a.deliveryNo.localeCompare(b.deliveryNo))
                       .map((d, i) => (
                         <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
                           <td className="border px-3 py-2 font-mono text-xs">{d.deliveryNo}</td>
-                          <td className="border px-3 py-2">{d.customerName || '-'}</td>
+                          <td className="border px-3 py-2">
+                            {d.driverName}
+                            {!d.matched && <span className="ml-1 text-xs text-yellow-500">⚠</span>}
+                          </td>
+                          <td className="border px-3 py-2 text-xs text-gray-400">{d.vehicleNo}</td>
                           <td className="border px-3 py-2 text-center"><DeliveryTypeTag d={d} /></td>
                           <td className="border px-3 py-2 text-right font-bold text-green-700">{d.totalInstall}</td>
-                          <td className="border px-3 py-2 text-right text-gray-400 text-xs">{d.itemCount}</td>
                         </tr>
                     ))}
                   </tbody>
@@ -319,7 +318,7 @@ export default function UploadPage() {
             )}
 
             {/* 행별 상세 */}
-            {activeTab === 'items' && result.items && (
+            {activeTab === 'items' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead>
@@ -335,7 +334,10 @@ export default function UploadPage() {
                     {result.items.slice(0, 100).map((item, i) => (
                       <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
                         <td className="border px-3 py-1 font-mono text-xs">{item.deliveryNo}</td>
-                        <td className="border px-3 py-1">{item.customerName || '-'}</td>
+                        <td className="border px-3 py-1 text-xs">
+                          {item.driverName}
+                          {!item.matched && <span className="ml-1 text-yellow-400">⚠</span>}
+                        </td>
                         <td className="border px-3 py-1 font-mono text-xs">{item.matnr || '-'}</td>
                         <td className="border px-3 py-1 text-center">
                           <span className={`px-2 py-0.5 rounded text-xs ${MODEL_TYPE_CLASSES[item.modelType] || 'bg-gray-100 text-gray-600'}`}>
@@ -352,7 +354,7 @@ export default function UploadPage() {
                   </tbody>
                 </table>
                 {result.items.length > 100 && (
-                  <p className="text-xs text-gray-500 mt-2 text-center py-2">
+                  <p className="text-xs text-gray-500 mt-2 text-center">
                     ... 외 {result.items.length - 100}건 (총 {result.items.length}건)
                   </p>
                 )}
