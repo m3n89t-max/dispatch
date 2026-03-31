@@ -122,11 +122,12 @@ model DispatchItem {
 }
 
 enum ModelType {
-  WALL_MOUNT // 벽걸이
-  STAND      // 스탠드
-  HOME_MULTI // 홈멀티
-  SYSTEM_AC  // 시스템에어컨 (설치대수 1, 별도 표기)
-  PRE_VISIT  // 사전방문 (제외)
+  WALL_MOUNT   // 벽걸이
+  STAND        // 스탠드
+  HOME_MULTI   // 홈멀티
+  SYSTEM_AC    // 시스템에어컨 (설치대수 1, 별도 표기)
+  PRE_VISIT    // 사전방문 (제외)
+  MOVE_INSTALL // 이전설치
   UNKNOWN
 }
 
@@ -198,6 +199,57 @@ enum RequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// ─────────────────────────────────────────────
+// 실적 분석 (배차 → 납기확정 → 설치완료 추적)
+// ─────────────────────────────────────────────
+
+// 작업일 + 날씨 기록
+model WorkDate {
+  id      String   @id @default(cuid())
+  date    String   @unique // "YYYY-MM-DD"
+  isRainy Boolean  @default(false)
+  note    String?
+
+  sessions  DeliverySession[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 업로드 세션 (배차 / 납기확정 / 설치완료)
+model DeliverySession {
+  id         String     @id @default(cuid())
+  workDateId String
+  uploadType UploadType
+  fileName   String
+  uploadedAt DateTime   @default(now())
+
+  workDate WorkDate         @relation(fields: [workDateId], references: [id])
+  records  DeliveryRecord[]
+}
+
+enum UploadType {
+  DISPATCH // 전일배차
+  CONFIRM  // 납기확정
+  COMPLETE // 설치완료
+}
+
+// 개별 배송 건 (Delivery 번호 기준 매칭)
+model DeliveryRecord {
+  id           String @id @default(cuid())
+  sessionId    String
+  deliveryNo   String
+  customerName String
+  matnr        String
+  modelType    String
+  installCount Int    @default(0)
+
+  session DeliverySession @relation(fields: [sessionId], references: [id])
+
+  @@index([deliveryNo])
+  @@index([customerName])
+  @@index([sessionId])
 }
 
 // 사용자 (권한 관리)
