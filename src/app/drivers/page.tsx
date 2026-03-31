@@ -28,7 +28,9 @@ interface Driver {
   supportableCenters: string | null
 }
 
-const EMPTY_FORM: Omit<Driver, 'id' | 'status'> = {
+type FormData = Omit<Driver, 'id' | 'status'>
+
+const EMPTY_FORM: FormData = {
   teamCode: '',
   teamName: '',
   route: '0602',
@@ -68,16 +70,136 @@ const STATUS_CLASSES: Record<string, string> = {
 const yn = (v: boolean) => (v ? 'O' : 'X')
 const dt = (v: string | null) =>
   v ? new Date(v).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }) : '-'
+const fmtDate = (v: string | null) =>
+  v ? new Date(v).toISOString().slice(0, 10) : ''
+
+function driverToForm(d: Driver): FormData {
+  return {
+    teamCode: d.teamCode,
+    teamName: d.teamName,
+    route: d.route,
+    center: d.center ?? '',
+    vehicleNumber: d.vehicleNumber ?? '',
+    vehicleType: d.vehicleType ?? '영업용',
+    vehicleStructure: d.vehicleStructure ?? 'TOP',
+    cellName: d.cellName ?? '',
+    cellRole: d.cellRole ?? '셀원',
+    residency: d.residency ?? '상주',
+    contractDone: d.contractDone,
+    contractExpectedDate: fmtDate(d.contractExpectedDate),
+    contractEndDate: fmtDate(d.contractEndDate),
+    safetyEduDone: d.safetyEduDone,
+    safetyEduDate: fmtDate(d.safetyEduDate),
+    expertSecured: d.expertSecured,
+    expertExpectedDate: fmtDate(d.expertExpectedDate),
+    expertRelation: d.expertRelation ?? '',
+    canSupportOther: d.canSupportOther,
+    supportableCenters: d.supportableCenters ?? '',
+  }
+}
+
+// 한 줄 폼 컴포넌트 (등록/수정 공용)
+function DriverForm({
+  form,
+  onChange,
+  onSubmit,
+  onCancel,
+  submitting,
+  submitLabel,
+}: {
+  form: FormData
+  onChange: (k: keyof FormData, v: unknown) => void
+  onSubmit: (e: React.FormEvent) => void
+  onCancel: () => void
+  submitting: boolean
+  submitLabel: string
+}) {
+  const inp = (w: string) => `border rounded px-2 py-1.5 text-xs ${w}`
+  const sel = (w: string) => `border rounded px-1 py-1.5 text-xs ${w}`
+  const lbl = 'block text-xs text-gray-500 mb-1 whitespace-nowrap'
+
+  return (
+    <form onSubmit={onSubmit}>
+      <div className="flex items-end gap-2 p-4 min-w-max overflow-x-auto">
+        <div><label className={lbl}>센터</label>
+          <input type="text" value={form.center ?? ''} onChange={e => onChange('center', e.target.value)} className={inp('w-16')} placeholder="제주" /></div>
+        <div><label className={lbl}>차량번호</label>
+          <input type="text" value={form.vehicleNumber ?? ''} onChange={e => onChange('vehicleNumber', e.target.value)} className={inp('w-24')} placeholder="12가3456" /></div>
+        <div><label className={lbl}>영업용구분</label>
+          <select value={form.vehicleType ?? '영업용'} onChange={e => onChange('vehicleType', e.target.value)} className={sel('w-20')}>
+            <option value="영업용">영업용</option><option value="자가용">자가용</option></select></div>
+        <div><label className={lbl}>ID *</label>
+          <input type="text" value={form.teamCode} onChange={e => onChange('teamCode', e.target.value)} className={inp('w-14')} placeholder="001" required /></div>
+        <div><label className={lbl}>이름 *</label>
+          <input type="text" value={form.teamName} onChange={e => onChange('teamName', e.target.value)} className={inp('w-20')} placeholder="홍길동" required /></div>
+        <div><label className={lbl}>차량구조</label>
+          <select value={form.vehicleStructure ?? 'TOP'} onChange={e => onChange('vehicleStructure', e.target.value)} className={sel('w-16')}>
+            <option value="TOP">TOP</option><option value="카고">카고</option></select></div>
+        <div><label className={lbl}>셀명</label>
+          <input type="text" value={form.cellName ?? ''} onChange={e => onChange('cellName', e.target.value)} className={inp('w-20')} placeholder="명성셀" /></div>
+        <div><label className={lbl}>셀구분</label>
+          <select value={form.cellRole ?? '셀원'} onChange={e => onChange('cellRole', e.target.value)} className={sel('w-18')}>
+            <option value="셀리더">셀리더</option><option value="셀원">셀원</option></select></div>
+        <div><label className={lbl}>상주여부</label>
+          <select value={form.residency ?? '상주'} onChange={e => onChange('residency', e.target.value)} className={sel('w-18')}>
+            <option value="상주">상주</option><option value="비상주">비상주</option></select></div>
+        <div><label className={lbl}>계약완료</label>
+          <div className="flex justify-center py-1.5">
+            <input type="checkbox" checked={form.contractDone} onChange={e => onChange('contractDone', e.target.checked)} className="w-4 h-4" /></div></div>
+        <div><label className={lbl}>계약예상일</label>
+          <input type="date" value={form.contractExpectedDate ?? ''} onChange={e => onChange('contractExpectedDate', e.target.value)} className={inp('w-32')} /></div>
+        <div><label className={lbl}>계약종료일</label>
+          <input type="date" value={form.contractEndDate ?? ''} onChange={e => onChange('contractEndDate', e.target.value)} className={inp('w-32')} /></div>
+        <div><label className={lbl}>보수교육</label>
+          <div className="flex justify-center py-1.5">
+            <input type="checkbox" checked={form.safetyEduDone} onChange={e => onChange('safetyEduDone', e.target.checked)} className="w-4 h-4" /></div></div>
+        <div><label className={lbl}>보수교육일</label>
+          <input type="date" value={form.safetyEduDate ?? ''} onChange={e => onChange('safetyEduDate', e.target.value)} className={inp('w-32')} /></div>
+        <div><label className={lbl}>전문기사확보</label>
+          <div className="flex justify-center py-1.5">
+            <input type="checkbox" checked={form.expertSecured} onChange={e => onChange('expertSecured', e.target.checked)} className="w-4 h-4" /></div></div>
+        <div><label className={lbl}>채용예상일</label>
+          <input type="date" value={form.expertExpectedDate ?? ''} onChange={e => onChange('expertExpectedDate', e.target.value)} className={inp('w-32')} /></div>
+        <div><label className={lbl}>전문기사관계</label>
+          <input type="text" value={form.expertRelation ?? ''} onChange={e => onChange('expertRelation', e.target.value)} className={inp('w-20')} placeholder="가족/지인" /></div>
+        <div><label className={lbl}>타센터가능</label>
+          <div className="flex justify-center py-1.5">
+            <input type="checkbox" checked={form.canSupportOther} onChange={e => onChange('canSupportOther', e.target.checked)} className="w-4 h-4" /></div></div>
+        <div><label className={lbl}>가능센터</label>
+          <input type="text" value={form.supportableCenters ?? ''} onChange={e => onChange('supportableCenters', e.target.value)} className={inp('w-20')} placeholder="서울,부산" /></div>
+        <div><label className={lbl}>권역 *</label>
+          <select value={form.route} onChange={e => onChange('route', e.target.value)} className={sel('w-24')} required>
+            <option value="0601">서귀포</option><option value="0602">제주시</option></select></div>
+        <button type="submit" disabled={submitting}
+          className="bg-red-600 text-white px-3 py-1.5 rounded text-xs hover:bg-red-700 disabled:opacity-50 whitespace-nowrap">
+          {submitting ? '...' : submitLabel}
+        </button>
+        <button type="button" onClick={onCancel}
+          className="border px-3 py-1.5 rounded text-xs text-gray-600 hover:bg-gray-50 whitespace-nowrap">
+          취소
+        </button>
+      </div>
+    </form>
+  )
+}
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [loading, setLoading] = useState(false)
   const [filterRoute, setFilterRoute] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+
+  // 등록 폼
   const [showAddForm, setShowAddForm] = useState(false)
-  const [addForm, setAddForm] = useState<Omit<Driver, 'id' | 'status'>>(EMPTY_FORM)
+  const [addForm, setAddForm] = useState<FormData>(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
-  const [message, setMessage] = useState('')
+  const [addMsg, setAddMsg] = useState('')
+
+  // 수정 모달
+  const [editTarget, setEditTarget] = useState<Driver | null>(null)
+  const [editForm, setEditForm] = useState<FormData>(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const [editMsg, setEditMsg] = useState('')
 
   const fetchDrivers = useCallback(async () => {
     setLoading(true)
@@ -97,13 +219,11 @@ export default function DriversPage() {
 
   useEffect(() => { fetchDrivers() }, [fetchDrivers])
 
-  const set = (k: keyof typeof EMPTY_FORM, v: unknown) =>
-    setAddForm(f => ({ ...f, [k]: v }))
-
+  // 등록
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     setAdding(true)
-    setMessage('')
+    setAddMsg('')
     try {
       const res = await fetch('/api/drivers', {
         method: 'POST',
@@ -112,14 +232,55 @@ export default function DriversPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setMessage('기사 등록 완료!')
+      setAddMsg('등록 완료!')
       setAddForm(EMPTY_FORM)
       setShowAddForm(false)
       fetchDrivers()
     } catch (err: unknown) {
-      setMessage(`오류: ${err instanceof Error ? err.message : '등록 실패'}`)
+      setAddMsg(`오류: ${err instanceof Error ? err.message : '등록 실패'}`)
     } finally {
       setAdding(false)
+    }
+  }
+
+  // 수정 열기
+  const openEdit = (d: Driver) => {
+    setEditTarget(d)
+    setEditForm(driverToForm(d))
+    setEditMsg('')
+  }
+
+  // 수정 저장
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editTarget) return
+    setSaving(true)
+    setEditMsg('')
+    try {
+      const res = await fetch('/api/drivers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editTarget.id, ...editForm }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setEditTarget(null)
+      fetchDrivers()
+    } catch (err: unknown) {
+      setEditMsg(`오류: ${err instanceof Error ? err.message : '수정 실패'}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`[${name}] 기사를 삭제하시겠습니까?`)) return
+    try {
+      const res = await fetch(`/api/drivers?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('삭제 실패')
+      fetchDrivers()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '오류')
     }
   }
 
@@ -139,9 +300,6 @@ export default function DriversPage() {
 
   const activeCount = drivers.filter(d => d.status === 'ACTIVE').length
   const suspendedCount = drivers.filter(d => d.status === 'SUSPENDED').length
-
-  const inputCls = 'border rounded px-2 py-1.5 text-sm w-full'
-  const selectCls = 'border rounded px-2 py-1.5 text-sm w-full'
   const labelCls = 'block text-xs text-gray-500 mb-1'
 
   return (
@@ -190,168 +348,56 @@ export default function DriversPage() {
               </select>
             </div>
           </div>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
-          >
+          <button onClick={() => { setShowAddForm(!showAddForm); setAddMsg('') }}
+            className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">
             + 기사 등록
           </button>
         </div>
 
-        {/* Add Form */}
+        {/* 등록 폼 */}
         {showAddForm && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-red-500">
-            <h3 className="font-semibold text-gray-700 mb-5">신규 기사 등록</h3>
-            <form onSubmit={handleAdd}>
-              {/* 기본 정보 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">기본 정보</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-5">
-                <div>
-                  <label className={labelCls}>센터</label>
-                  <input type="text" value={addForm.center ?? ''} onChange={e => set('center', e.target.value)} className={inputCls} placeholder="제주" />
-                </div>
-                <div>
-                  <label className={labelCls}>차량번호</label>
-                  <input type="text" value={addForm.vehicleNumber ?? ''} onChange={e => set('vehicleNumber', e.target.value)} className={inputCls} placeholder="12가 3456" />
-                </div>
-                <div>
-                  <label className={labelCls}>영업용구분</label>
-                  <select value={addForm.vehicleType ?? '영업용'} onChange={e => set('vehicleType', e.target.value)} className={selectCls}>
-                    <option value="영업용">영업용</option>
-                    <option value="자가용">자가용</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>시퀀스ID *</label>
-                  <input type="text" value={addForm.teamCode} onChange={e => set('teamCode', e.target.value)} className={inputCls} placeholder="001" required />
-                </div>
-                <div>
-                  <label className={labelCls}>이름 *</label>
-                  <input type="text" value={addForm.teamName} onChange={e => set('teamName', e.target.value)} className={inputCls} placeholder="홍길동" required />
-                </div>
-              </div>
-
-              {/* 차량/셀 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">차량 / 셀</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-5">
-                <div>
-                  <label className={labelCls}>차량구조</label>
-                  <select value={addForm.vehicleStructure ?? 'TOP'} onChange={e => set('vehicleStructure', e.target.value)} className={selectCls}>
-                    <option value="TOP">TOP</option>
-                    <option value="카고">카고</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>셀명</label>
-                  <input type="text" value={addForm.cellName ?? ''} onChange={e => set('cellName', e.target.value)} className={inputCls} placeholder="명성셀" />
-                </div>
-                <div>
-                  <label className={labelCls}>셀구분</label>
-                  <select value={addForm.cellRole ?? '셀원'} onChange={e => set('cellRole', e.target.value)} className={selectCls}>
-                    <option value="셀리더">셀리더</option>
-                    <option value="셀원">셀원</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>상주여부</label>
-                  <select value={addForm.residency ?? '상주'} onChange={e => set('residency', e.target.value)} className={selectCls}>
-                    <option value="상주">상주</option>
-                    <option value="비상주">비상주</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>권역 *</label>
-                  <select value={addForm.route} onChange={e => set('route', e.target.value)} className={selectCls} required>
-                    <option value="0601">서귀포 (0601)</option>
-                    <option value="0602">제주시 (0602)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* 계약 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">계약</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
-                <div className="flex items-center gap-3 pt-5">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={addForm.contractDone} onChange={e => set('contractDone', e.target.checked)} className="w-4 h-4" />
-                    계약완료
-                  </label>
-                </div>
-                <div>
-                  <label className={labelCls}>계약예상일시</label>
-                  <input type="date" value={addForm.contractExpectedDate ?? ''} onChange={e => set('contractExpectedDate', e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>계약종료일</label>
-                  <input type="date" value={addForm.contractEndDate ?? ''} onChange={e => set('contractEndDate', e.target.value)} className={inputCls} />
-                </div>
-              </div>
-
-              {/* 보수교육 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">보수교육</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
-                <div className="flex items-center gap-3 pt-5">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={addForm.safetyEduDone} onChange={e => set('safetyEduDone', e.target.checked)} className="w-4 h-4" />
-                    보수교육완료
-                  </label>
-                </div>
-                <div>
-                  <label className={labelCls}>보수교육일시</label>
-                  <input type="date" value={addForm.safetyEduDate ?? ''} onChange={e => set('safetyEduDate', e.target.value)} className={inputCls} />
-                </div>
-              </div>
-
-              {/* 전문기사 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">전문기사 (보조인력)</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-5">
-                <div className="flex items-center gap-3 pt-5">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={addForm.expertSecured} onChange={e => set('expertSecured', e.target.checked)} className="w-4 h-4" />
-                    전문기사 확보
-                  </label>
-                </div>
-                <div>
-                  <label className={labelCls}>채용예상일시</label>
-                  <input type="date" value={addForm.expertExpectedDate ?? ''} onChange={e => set('expertExpectedDate', e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>전문기사 관계</label>
-                  <input type="text" value={addForm.expertRelation ?? ''} onChange={e => set('expertRelation', e.target.value)} className={inputCls} placeholder="가족, 지인 등" />
-                </div>
-              </div>
-
-              {/* 타센터 */}
-              <p className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wide">타센터 지원</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-                <div className="flex items-center gap-3 pt-5">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={addForm.canSupportOther} onChange={e => set('canSupportOther', e.target.checked)} className="w-4 h-4" />
-                    타센터 지원 가능
-                  </label>
-                </div>
-                <div>
-                  <label className={labelCls}>가능 센터</label>
-                  <input type="text" value={addForm.supportableCenters ?? ''} onChange={e => set('supportableCenters', e.target.value)} className={inputCls} placeholder="서울, 부산" />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button type="submit" disabled={adding} className="bg-red-600 text-white px-5 py-2 rounded text-sm hover:bg-red-700 disabled:opacity-50">
-                  {adding ? '등록 중...' : '등록'}
-                </button>
-                <button type="button" onClick={() => setShowAddForm(false)} className="border px-5 py-2 rounded text-sm text-gray-600 hover:bg-gray-50">
-                  취소
-                </button>
-              </div>
-              {message && (
-                <p className={`mt-3 text-sm ${message.startsWith('오류') ? 'text-red-600' : 'text-green-600'}`}>{message}</p>
-              )}
-            </form>
+          <div className="bg-white rounded-lg shadow mb-6 border-l-4 border-red-500 overflow-x-auto">
+            <div className="px-4 pt-3 text-xs font-semibold text-gray-500">신규 기사 등록</div>
+            <DriverForm
+              form={addForm}
+              onChange={(k, v) => setAddForm(f => ({ ...f, [k]: v }))}
+              onSubmit={handleAdd}
+              onCancel={() => setShowAddForm(false)}
+              submitting={adding}
+              submitLabel="등록"
+            />
+            {addMsg && (
+              <p className={`px-4 pb-3 text-sm ${addMsg.startsWith('오류') ? 'text-red-600' : 'text-green-600'}`}>{addMsg}</p>
+            )}
           </div>
         )}
 
-        {/* Drivers Table */}
+        {/* 수정 모달 */}
+        {editTarget && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-[98vw] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b">
+                <h3 className="font-semibold text-gray-700">기사 수정 — {editTarget.teamName}</h3>
+                <button onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+              </div>
+              <div className="overflow-x-auto">
+                <DriverForm
+                  form={editForm}
+                  onChange={(k, v) => setEditForm(f => ({ ...f, [k]: v }))}
+                  onSubmit={handleEdit}
+                  onCancel={() => setEditTarget(null)}
+                  submitting={saving}
+                  submitLabel="저장"
+                />
+              </div>
+              {editMsg && (
+                <p className="px-4 pb-3 text-sm text-red-600">{editMsg}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 목록 테이블 */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">로딩 중...</div>
@@ -369,7 +415,7 @@ export default function DriversPage() {
                       '보수교육', '보수교육일',
                       '전문기사확보', '채용예상일', '전문기사관계',
                       '타센터가능', '가능센터',
-                      '상태', '상태변경',
+                      '상태', '상태변경', '수정', '삭제',
                     ].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-medium border-b">{h}</th>
                     ))}
@@ -415,16 +461,25 @@ export default function DriversPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        <select
-                          value={d.status}
-                          onChange={e => handleStatusChange(d.id, e.target.value)}
-                          className="border rounded px-2 py-1 text-xs"
-                        >
+                        <select value={d.status} onChange={e => handleStatusChange(d.id, e.target.value)}
+                          className="border rounded px-2 py-1 text-xs">
                           <option value="ACTIVE">정상</option>
                           <option value="SUSPENDED">배차정지</option>
                           <option value="CONTRACT_ENDED">계약종료</option>
                           <option value="ON_LEAVE">휴무</option>
                         </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => openEdit(d)}
+                          className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">
+                          수정
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => handleDelete(d.id, d.teamName)}
+                          className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
+                          삭제
+                        </button>
                       </td>
                     </tr>
                   ))}

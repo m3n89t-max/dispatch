@@ -77,6 +77,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id가 필요합니다' }, { status: 400 })
+    await prisma.driver.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '삭제 중 오류가 발생했습니다'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()

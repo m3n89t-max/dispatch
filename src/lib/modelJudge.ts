@@ -14,10 +14,21 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
   const code = matnr.toUpperCase().trim()
 
   if (code.startsWith('AC')) return 'SYSTEM_AC'
-  if (code.startsWith('AR')) return 'WALL_MOUNT'
+
+  if (code.startsWith('AR')) {
+    // 리모컨/부속품: ARR 접두사 (예: ARR-WK8F) → 제외
+    if (code.startsWith('ARR')) return 'UNKNOWN'
+    // 실외기: XKO 또는 NKO 접미사 (예: AR60F07D11WXKO, AR60F07D11WNKO) → 제외
+    if (code.endsWith('XKO') || code.endsWith('NKO')) return 'UNKNOWN'
+    // 실내기는 끝 2자리가 순수 영문 (예: WT, WS) → 끝에 숫자 포함 시 실외기 (예: A0Q)
+    if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
+    return 'WALL_MOUNT'
+  }
 
   if (code.startsWith('AF')) {
-    // Check if ends with 3 English letters (uppercase)
+    // 리모컨/부속품: AFR 접두사 (예: AFR-QC3F) → 제외
+    if (code.startsWith('AFR')) return 'UNKNOWN'
+    // 끝 영문 3자리 → 홈멀티 실내기 (예: AF60F17D12WRS)
     const suffix = code.slice(-3)
     if (/^[A-Z]{3}$/.test(suffix)) return 'HOME_MULTI'
     return 'STAND'
