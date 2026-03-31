@@ -3,8 +3,7 @@ import { prisma } from '@/lib/prisma'
 import * as ExcelJS from 'exceljs'
 import { judgeModelType, getInstallCount } from '@/lib/modelJudge'
 
-// SAP 엑셀 파싱 (배차/납기확정/설치완료 공통)
-// [1]=Delivery [2]=ShippingPoint [3]=S.Org [4]=Material [5]=Qty [6]=Unit [7]=Customer
+// SAP 엑셀 파싱 (배차/납기확정/설치완료 공통) — 컬럼 위치 스캔 방식
 
 function extractMatnr(values: unknown[]): string {
   for (const v of values) {
@@ -24,6 +23,25 @@ function extractAugru(values: unknown[]): string {
   return ''
 }
 
+// Delivery 번호: 7로 시작하는 10자리 숫자 (SAP 납기문서: 73xxxxxxxx)
+function extractDeliveryNo(values: unknown[]): string {
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (/^7\d{9}$/.test(s)) return s
+  }
+  return ''
+}
+
+// 고객명(기사명): 한글이 포함된 값 (마지막 발견값 우선)
+function extractCustomerName(values: unknown[]): string {
+  let found = ''
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (/[가-힣]/.test(s)) found = s
+  }
+  return found
+}
+
 async function parseExcel(buffer: Buffer): Promise<{ deliveryNo: string; customerName: string; matnr: string; modelType: string; installCount: number }[]> {
   const workbook = new ExcelJS.Workbook()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,8 +56,8 @@ async function parseExcel(buffer: Buffer): Promise<{ deliveryNo: string; custome
     if (rowNumber === 1) return
     const vals = row.values as unknown[]
 
-    const deliveryNo = String(vals[1] ?? '').trim()
-    const customerName = String(vals[7] ?? '').trim()
+    const deliveryNo = extractDeliveryNo(vals)
+    const customerName = extractCustomerName(vals)
     const matnr = extractMatnr(vals)
     const augru = extractAugru(vals)
 

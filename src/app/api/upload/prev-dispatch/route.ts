@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma'
 import * as ExcelJS from 'exceljs'
 import { judgeModelType, getInstallCount } from '@/lib/modelJudge'
 
-// SAP 납기전 배차 엑셀 컬럼 (1-indexed, ExcelJS)
-// [1]=Delivery [2]=ShippingPoint [3]=S.Org [4]=Material [5]=Qty [6]=Unit [7]=Customer
+// SAP 납기전 배차 엑셀 — 컬럼 위치를 고정하지 않고 값 스캔으로 감지
+// (SAP 리포트 종류에 따라 컬럼 수/순서가 다를 수 있음)
 
 // 모델코드 자동 감지: AR/AF/AC/L- 로 시작하는 값
 function extractMatnr(values: unknown[]): string {
@@ -29,14 +29,23 @@ function extractAugru(values: unknown[]): string {
   return ''
 }
 
-// Delivery 번호: 1번째 컬럼
+// Delivery 번호: 7로 시작하는 10자리 숫자 (SAP 납기문서 형식: 73xxxxxxxx)
 function extractDeliveryNo(values: unknown[]): string {
-  return String(values[1] ?? '').trim()
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (/^7\d{9}$/.test(s)) return s
+  }
+  return ''
 }
 
-// 고객명(기사명): 7번째 컬럼
+// 고객명(기사명): 한글이 포함된 값 (마지막 발견값 우선)
 function extractCustomerName(values: unknown[]): string {
-  return String(values[7] ?? '').trim()
+  let found = ''
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (/[가-힣]/.test(s)) found = s
+  }
+  return found
 }
 
 export async function POST(request: NextRequest) {
