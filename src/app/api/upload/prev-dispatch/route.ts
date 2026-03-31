@@ -37,15 +37,17 @@ function extractDeliveryNo(values: unknown[]): string {
   return ''
 }
 
-// 차량번호: 한글이 포함된 값 (마지막 발견값 우선)
+// 차량번호: 한국 번호판 패턴 — 숫자2-3자리 + 한글1자 + 숫자4자리
+// 예) 12가3456 / 123나4567 / 제주 12가 3456
 // SAP 리스트에는 기사명 없이 차량번호만 있으므로, 이 값으로 Driver DB 매칭
+const PLATE_RE = /\d{2,3}\s*[가-힣]\s*\d{4}/
 function extractVehicleNo(values: unknown[]): string {
-  let found = ''
   for (const v of values) {
     const s = String(v ?? '').trim()
-    if (/[가-힣]/.test(s)) found = s
+    const m = s.match(PLATE_RE)
+    if (m) return s // 번호판 패턴이 포함된 셀 전체 반환
   }
-  return found
+  return ''
 }
 
 export async function POST(request: NextRequest) {

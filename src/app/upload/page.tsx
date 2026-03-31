@@ -150,7 +150,7 @@ export default function UploadPage() {
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
-              <strong>자동 감지:</strong> Delivery 번호(73으로 시작 10자리) · 모델코드(AR/AF/AC/L-) · 차량번호(한글 포함) → DB 기사명 매칭
+              <strong>자동 감지:</strong> Delivery 번호(73으로 시작 10자리) · 모델코드(AR/AF/AC/L-) · 차량번호(예: 12가3456) → DB 기사명 매칭
             </div>
 
             {error && (
@@ -236,7 +236,6 @@ export default function UploadPage() {
                     <tr className="bg-gray-100">
                       <th className="border px-3 py-2 text-left">기사명</th>
                       <th className="border px-3 py-2 text-left text-xs text-gray-500">차량번호</th>
-                      <th className="border px-3 py-2 text-right">배송건</th>
                       <th className="border px-3 py-2 text-right font-bold">설치대수</th>
                       <th className="border px-3 py-2 text-center text-xs">벽걸이</th>
                       <th className="border px-3 py-2 text-center text-xs">스탠드</th>
@@ -253,8 +252,7 @@ export default function UploadPage() {
                           {d.driverName}
                           {!d.matched && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
                         </td>
-                        <td className="border px-3 py-2 text-xs text-gray-400">{d.vehicleNo}</td>
-                        <td className="border px-3 py-2 text-right">{d.deliveryCount}</td>
+                        <td className="border px-3 py-2 text-xs text-gray-400">{d.vehicleNo || <span className="text-red-300">미감지</span>}</td>
                         <td className="border px-3 py-2 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
                         <td className="border px-3 py-2 text-center">{d.wallMount > 0 ? <span className="text-blue-600 font-medium">{d.wallMount}</span> : <span className="text-gray-300">-</span>}</td>
                         <td className="border px-3 py-2 text-center">{d.stand > 0 ? <span className="text-green-600 font-medium">{d.stand}</span> : <span className="text-gray-300">-</span>}</td>
@@ -268,7 +266,6 @@ export default function UploadPage() {
                   <tfoot>
                     <tr className="bg-green-50 font-bold">
                       <td className="border px-3 py-2" colSpan={2}>합계</td>
-                      <td className="border px-3 py-2 text-right">{result.deliveryCount}</td>
                       <td className="border px-3 py-2 text-right text-green-700 text-base">
                         {result.driverSummary.reduce((s, d) => s + d.totalInstall, 0)}
                       </td>
