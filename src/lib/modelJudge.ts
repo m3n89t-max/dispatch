@@ -39,10 +39,14 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     if (code.startsWith('AFR')) return 'UNKNOWN'
     // 실외기: 끝 2자리에 숫자 포함 (예: Q8X → 8X에 숫자) → 제외
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
-    // 홈멀티/스탠드 실내기: W로 시작하는 영문 suffix (WN, WRS, WZN, WZRS 등)
-    // 실외기(GN, DCX 등)는 W가 없으므로 제외
+    // 홈멀티 실내기: W로 시작하는 영문 suffix (WN, WRS, WZN, WZRS 등)
     if (/W[A-Z]{1,3}$/.test(code)) return 'HOME_MULTI'
-    return 'UNKNOWN'
+    // 실외기: N으로 끝나는 경우 (GN 등) — W-suffix는 위에서 처리됨
+    if (code.endsWith('N')) return 'UNKNOWN'
+    // 실외기: 3자리 이상 영문 suffix (DCX 등)
+    if (/[A-Z]{3,}$/.test(code)) return 'UNKNOWN'
+    // 스탠드 세트모델명: 2자리 영문 suffix (GT 등)
+    return 'STAND'
   }
 
   // 이전설치: L-MAIR 등 L- 접두사
