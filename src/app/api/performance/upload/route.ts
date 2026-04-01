@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Performance upload error:', error)
-    return NextResponse.json({ error: '업로드 중 오류가 발생했습니다' }, { status: 500 })
+    const msg = error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

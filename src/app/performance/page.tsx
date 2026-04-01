@@ -200,7 +200,7 @@ export default function PerformancePage() {
                   <label className="block text-sm font-medium text-gray-600 mb-2">업로드 구분</label>
                   <div className="flex gap-2">
                     {(['DISPATCH', 'CONFIRM', 'COMPLETE'] as const).map(t => (
-                      <button key={t} type="button" onClick={() => setUploadType(t)}
+                      <button key={t} type="button" onClick={() => { setUploadType(t); setUploadFile(null); setUploadError(''); setUploadResult(null) }}
                         className={`flex-1 py-2 px-2 rounded border text-xs font-medium transition-colors ${
                           uploadType === t
                             ? t === 'DISPATCH' ? 'bg-blue-600 text-white border-blue-600'
@@ -237,7 +237,7 @@ export default function PerformancePage() {
                 {/* 파일 선택 */}
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">SAP 엑셀 파일</label>
-                  <input type="file" accept=".xlsx,.xls"
+                  <input key={uploadType} type="file" accept=".xlsx,.xls"
                     onChange={e => setUploadFile(e.target.files?.[0] || null)}
                     className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border rounded p-2" />
                   {uploadFile && (
