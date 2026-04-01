@@ -65,11 +65,12 @@ async function parseExcel(
     const matnr = extractMatnr(vals)
     const augru = extractAugru(vals)
 
-    // 차량번호 → 기사명 매칭 (vehicleMap이 있으면 기사명, 없으면 차량번호 그대로)
+    // 차량번호 → 기사명 매칭 (vehicleMap이 있으면 "기사명 (차량번호)", 없으면 차량번호)
     const vehicleNo = extractVehicleNo(vals)
     const vehicleKey = vehicleNo.replace(/\s/g, '').toUpperCase()
-    const driverName = vehicleMap.size > 0
-      ? (vehicleMap.get(vehicleKey) ?? vehicleNo ?? 'UNKNOWN')
+    const matchedName = vehicleMap.get(vehicleKey)
+    const driverName = matchedName
+      ? `${matchedName} (${vehicleNo})`
       : vehicleNo || 'UNKNOWN'
 
     const modelType = matnr ? judgeModelType(matnr, augru || undefined) : 'UNKNOWN'
