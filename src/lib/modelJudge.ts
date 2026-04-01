@@ -26,10 +26,11 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
   if (code.startsWith('AR')) {
     // 리모컨/부속품: ARR 접두사 (예: ARR-WK8F) → 제외
     if (code.startsWith('ARR')) return 'UNKNOWN'
-    // 실외기: XKO 또는 NKO 접미사 → 제외
-    if (code.endsWith('XKO') || code.endsWith('NKO')) return 'UNKNOWN'
     // 실외기: 끝 2자리에 숫자 포함 (예: A0Q → 0Q에 숫자) → 제외
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
+    // 실내기/실외기 컴포넌트: 끝 3자리 이상 영문 (WNKO, WXKO, HNQ 등) → 제외
+    // 세트모델명은 끝 2자리 영문 (예: WT)
+    if (/[A-Z]{3,}$/.test(code)) return 'UNKNOWN'
     return 'WALL_MOUNT'
   }
 
@@ -38,15 +39,10 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     if (code.startsWith('AFR')) return 'UNKNOWN'
     // 실외기: 끝 2자리에 숫자 포함 (예: Q8X → 8X에 숫자) → 제외
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
-    // 실외기: 끝이 N이고 직전 글자가 W가 아닌 경우 (예: GN → 스탠드 실외기)
-    // ※ WN은 홈멀티 실내기(스탠드형)이므로 제외하지 않음
-    if (code.endsWith('N') && code.slice(-2, -1) !== 'W') return 'UNKNOWN'
-    // WN = 홈멀티 실내기 스탠드형 (예: AF60F17D12WN)
-    if (code.endsWith('WN')) return 'HOME_MULTI'
-    // 끝 영문 3자리 → 홈멀티 실내기 (예: AF60F17D12WRS)
-    const suffix = code.slice(-3)
-    if (/^[A-Z]{3}$/.test(suffix)) return 'HOME_MULTI'
-    return 'STAND'
+    // 홈멀티/스탠드 실내기: W로 시작하는 영문 suffix (WN, WRS, WZN, WZRS 등)
+    // 실외기(GN, DCX 등)는 W가 없으므로 제외
+    if (/W[A-Z]{1,3}$/.test(code)) return 'HOME_MULTI'
+    return 'UNKNOWN'
   }
 
   // 이전설치: L-MAIR 등 L- 접두사
