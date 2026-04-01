@@ -41,6 +41,8 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     // 실외기: 끝이 N이고 직전 글자가 W가 아닌 경우 (예: GN → 스탠드 실외기)
     // ※ WN은 홈멀티 실내기(스탠드형)이므로 제외하지 않음
     if (code.endsWith('N') && code.slice(-2, -1) !== 'W') return 'UNKNOWN'
+    // WN = 홈멀티 실내기 스탠드형 (예: AF60F17D12WN)
+    if (code.endsWith('WN')) return 'HOME_MULTI'
     // 끝 영문 3자리 → 홈멀티 실내기 (예: AF60F17D12WRS)
     const suffix = code.slice(-3)
     if (/^[A-Z]{3}$/.test(suffix)) return 'HOME_MULTI'
