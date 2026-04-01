@@ -32,17 +32,20 @@ function extractDeliveryNo(values: unknown[]): string {
   return ''
 }
 
-// 고객명(기사명): 한글이 포함된 값 (마지막 발견값 우선)
-function extractCustomerName(values: unknown[]): string {
-  let found = ''
+// 차량번호: 한국 번호판 패턴
+const PLATE_RE = /\d{2,3}\s*[가-힣]\s*\d{4}/
+function extractVehicleNo(values: unknown[]): string {
   for (const v of values) {
     const s = String(v ?? '').trim()
-    if (/[가-힣]/.test(s)) found = s
+    if (PLATE_RE.test(s)) return s
   }
-  return found
+  return ''
 }
 
-async function parseExcel(buffer: Buffer): Promise<{ deliveryNo: string; customerName: string; matnr: string; modelType: string; installCount: number }[]> {
+async function parseExcel(
+  buffer: Buffer,
+  vehicleMap: Map<string, string>  // vehicleKey → driverName
+): Promise<{ deliveryNo: string; customerName: string; matnr: string; modelType: string; installCount: number }[]> {
   const workbook = new ExcelJS.Workbook()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await workbook.xlsx.load(buffer as any)
@@ -57,16 +60,22 @@ async function parseExcel(buffer: Buffer): Promise<{ deliveryNo: string; custome
     const vals = row.values as unknown[]
 
     const deliveryNo = extractDeliveryNo(vals)
-    const customerName = extractCustomerName(vals)
+    if (!deliveryNo) return
+
     const matnr = extractMatnr(vals)
     const augru = extractAugru(vals)
 
-    if (!deliveryNo) return
+    // 차량번호 → 기사명 매칭 (vehicleMap이 있으면 기사명, 없으면 차량번호 그대로)
+    const vehicleNo = extractVehicleNo(vals)
+    const vehicleKey = vehicleNo.replace(/\s/g, '').toUpperCase()
+    const driverName = vehicleMap.size > 0
+      ? (vehicleMap.get(vehicleKey) ?? vehicleNo ?? 'UNKNOWN')
+      : vehicleNo || 'UNKNOWN'
 
     const modelType = matnr ? judgeModelType(matnr, augru || undefined) : 'UNKNOWN'
     const installCount = getInstallCount(modelType as Parameters<typeof getInstallCount>[0])
 
-    records.push({ deliveryNo, customerName, matnr, modelType, installCount })
+    records.push({ deliveryNo, customerName: driverName, matnr, modelType, installCount })
   })
 
   return records
@@ -88,9 +97,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '날짜 형식 오류 (YYYY-MM-DD)' }, { status: 400 })
     }
 
+    // DISPATCH 타입은 차량번호 → 기사명 매칭
+    const vehicleMap = new Map<string, string>()
+    if (uploadType === 'DISPATCH') {
+      const allDrivers = await prisma.driver.findMany({
+        select: { teamName: true, vehicleNumber: true },
+      })
+      for (const d of allDrivers) {
+        if (d.vehicleNumber) {
+          vehicleMap.set(d.vehicleNumber.replace(/\s/g, '').toUpperCase(), d.teamName)
+        }
+      }
+    }
+
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const records = await parseExcel(buffer)
+    const records = await parseExcel(buffer, vehicleMap)
 
     if (records.length === 0) {
       return NextResponse.json({ error: '유효한 데이터가 없습니다' }, { status: 400 })
