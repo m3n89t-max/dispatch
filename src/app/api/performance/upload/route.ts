@@ -125,6 +125,17 @@ export async function POST(request: NextRequest) {
       create: { date, isRainy },
     })
 
+    // 같은 날짜+타입의 기존 세션 삭제 (재업로드 시 교체)
+    const existingSessions = await prisma.deliverySession.findMany({
+      where: { workDateId: workDate.id, uploadType: uploadType as 'DISPATCH' | 'CONFIRM' | 'COMPLETE' },
+      select: { id: true },
+    })
+    if (existingSessions.length > 0) {
+      const ids = existingSessions.map(s => s.id)
+      await prisma.deliveryRecord.deleteMany({ where: { sessionId: { in: ids } } })
+      await prisma.deliverySession.deleteMany({ where: { id: { in: ids } } })
+    }
+
     // DeliverySession 생성
     const session = await prisma.deliverySession.create({
       data: {
