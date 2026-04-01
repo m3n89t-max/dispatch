@@ -126,9 +126,15 @@ export async function POST(request: NextRequest) {
       create: { date, isRainy },
     })
 
-    // 같은 날짜+타입의 기존 세션 삭제 (재업로드 시 교체)
+    // 기존 세션 삭제 (재업로드 시 교체)
+    // DISPATCH 재업로드 시 → 해당 날짜 전체(DISPATCH+CONFIRM+COMPLETE) 초기화
+    // CONFIRM/COMPLETE 재업로드 시 → 동일 타입만 교체
+    const sessionFilter = uploadType === 'DISPATCH'
+      ? { workDateId: workDate.id }
+      : { workDateId: workDate.id, uploadType: uploadType as 'DISPATCH' | 'CONFIRM' | 'COMPLETE' }
+
     const existingSessions = await prisma.deliverySession.findMany({
-      where: { workDateId: workDate.id, uploadType: uploadType as 'DISPATCH' | 'CONFIRM' | 'COMPLETE' },
+      where: sessionFilter,
       select: { id: true },
     })
     if (existingSessions.length > 0) {
