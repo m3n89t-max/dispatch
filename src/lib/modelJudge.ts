@@ -30,10 +30,12 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
     // 실내기/실외기 컴포넌트: 지역코드 KO로 끝남 (WNKO, WXKO 등) → 제외
     if (code.endsWith('KO')) return 'UNKNOWN'
-    // 실내기 컴포넌트: trailing 영문에 N 포함 (HNQ 등) → 제외
+    // 실내기 컴포넌트: trailing 영문에 N 포함 (HNQ, HZN 등) → 제외
     const trailingAlpha = code.match(/[A-Z]+$/)
     if (trailingAlpha && trailingAlpha[0].includes('N')) return 'UNKNOWN'
-    // 세트모델명: WT, HAX, HZT 등 → WALL_MOUNT
+    // 실외기: trailing 영문이 X로 끝남 (HAX 등) → 제외
+    if (trailingAlpha && trailingAlpha[0].endsWith('X')) return 'UNKNOWN'
+    // 세트모델명: WT, HZT 등 → WALL_MOUNT
     return 'WALL_MOUNT'
   }
 
