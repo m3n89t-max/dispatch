@@ -28,9 +28,12 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     if (code.startsWith('ARR')) return 'UNKNOWN'
     // 실외기: 끝 2자리에 숫자 포함 (예: A0Q → 0Q에 숫자) → 제외
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
-    // 실내기/실외기 컴포넌트: 끝 3자리 이상 영문 (WNKO, WXKO, HNQ 등) → 제외
-    // 세트모델명은 끝 2자리 영문 (예: WT)
-    if (/[A-Z]{3,}$/.test(code)) return 'UNKNOWN'
+    // 실내기/실외기 컴포넌트: 지역코드 KO로 끝남 (WNKO, WXKO 등) → 제외
+    if (code.endsWith('KO')) return 'UNKNOWN'
+    // 실내기 컴포넌트: trailing 영문에 N 포함 (HNQ 등) → 제외
+    const trailingAlpha = code.match(/[A-Z]+$/)
+    if (trailingAlpha && trailingAlpha[0].includes('N')) return 'UNKNOWN'
+    // 세트모델명: WT, HAX, HZT 등 → WALL_MOUNT
     return 'WALL_MOUNT'
   }
 
