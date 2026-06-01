@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String -Pattern \"scripts\" -A 10)",
+      "Bash(Test-Path \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\node_modules\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "PowerShell($env:DATABASE_URL)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -c \"\\\\l\" 2>&1)",
+      "Bash(npx ts-node *)",
+      "Bash(mkdir -p \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\run\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\validate\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\db\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\m3n89\\Desktop\\Dispatch\\dispatch\\.claude\\skills"
+    ]
+  }
+}

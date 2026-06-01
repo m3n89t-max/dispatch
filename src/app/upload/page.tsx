@@ -1,129 +1,359 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
-interface ProcessedItem {
-  deliveryNo: string
-  vehicleNo: string
-  driverName: string
-  teamCode: string
-  matched: boolean
-  matnr: string
-  augru: string
-  modelType: string
-  installCount: number
-}
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface DeliverySummary {
-  deliveryNo: string
-  vehicleNo: string
+interface DriverSummaryItem {
   driverName: string
-  teamCode: string
-  matched: boolean
-  totalInstall: number
-  itemCount: number
-  wallMount: number
-  stand: number
-  homeMulti: number
-  systemAc: number
-  preVisit: number
-  moveInstall: number
-  unknown: number
-}
-
-interface DriverSummary {
   vehicleNo: string
-  driverName: string
-  teamCode: string
-  matched: boolean
-  totalInstall: number
+  matched?: boolean
+  deliveryNos?: string[]
   deliveryCount: number
+  totalInstall: number
   wallMount: number
   stand: number
   homeMulti: number
   systemAc: number
   preVisit: number
   moveInstall: number
+}
+
+interface ComparisonDriver {
+  driverName: string
+  vehicleNo: string
+  prevDeliveryCount: number
+  prevInstallCount: number
+  sameDayDeliveryCount: number
+  sameDayInstallCount: number
+  maintained: number
+  postponed: number
+  added: number
 }
 
 interface UploadResult {
   success: boolean
-  uploadId: string
+  installDate: string
+  uploadType: string
   totalRows: number
   deliveryCount: number
-  driverCount: number
+  driverSummary: DriverSummaryItem[]
   unmatchedVehicles: string[]
-  items: ProcessedItem[]
-  deliverySummary: DeliverySummary[]
-  driverSummary: DriverSummary[]
+  comparison: ComparisonDriver[] | null
 }
 
-interface Driver {
+interface DateInfo {
+  date: string
+  hasPrev: boolean
+  hasSameDay: boolean
+  prevInstallCount: number
+  sameDayInstallCount: number
+}
+
+interface SessionInfo {
+  id: string
+  fileName: string
+  uploadedAt: string
+  driverSummary: DriverSummaryItem[] | null
+  deliveryCount: number
+  totalInstall: number
+}
+
+interface ViewData {
+  installDate: string
+  prevSession: SessionInfo | null
+  sameDaySession: SessionInfo | null
+  comparison: ComparisonDriver[] | null
+}
+
+interface DriverRecord {
   id: string
   teamCode: string
   teamName: string
   vehicleNumber: string | null
 }
 
-const MODEL_TYPE_LABELS: Record<string, string> = {
-  WALL_MOUNT: '벽걸이', STAND: '스탠드', HOME_MULTI: '홈멀티',
-  SYSTEM_AC: '[시스템]', PRE_VISIT: '사전방문', MOVE_INSTALL: '이전설치', UNKNOWN: '미분류',
-}
-const MODEL_TYPE_CLASSES: Record<string, string> = {
-  WALL_MOUNT: 'bg-blue-100 text-blue-700', STAND: 'bg-green-100 text-green-700',
-  HOME_MULTI: 'bg-purple-100 text-purple-700', SYSTEM_AC: 'bg-gray-200 text-gray-700',
-  PRE_VISIT: 'bg-orange-100 text-orange-700', MOVE_INSTALL: 'bg-yellow-100 text-yellow-700',
-  UNKNOWN: 'bg-red-50 text-red-300',
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function numCell(n: number, cls: string) {
+  return n > 0
+    ? <span className={cls + ' font-semibold'}>{n}</span>
+    : <span className="text-gray-300">-</span>
 }
 
-function DeliveryTypeTag({ d }: { d: DeliverySummary }) {
-  if (d.systemAc > 0) return <span className="px-2 py-0.5 rounded text-xs bg-gray-200 text-gray-700">[시스템]</span>
-  if (d.homeMulti > 0 && d.totalInstall >= 2) return <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">홈멀티</span>
-  if (d.wallMount > 0) return <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">벽걸이</span>
-  if (d.stand > 0) return <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">스탠드</span>
-  if (d.moveInstall > 0) return <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">이전설치</span>
-  if (d.preVisit > 0) return <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-700">사전방문</span>
-  return <span className="px-2 py-0.5 rounded text-xs bg-red-50 text-red-400">미분류</span>
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function DriverSummaryTable({ rows }: { rows: DriverSummaryItem[] }) {
+  const total = rows.reduce((s, d) => ({
+    totalInstall: s.totalInstall + d.totalInstall,
+    wallMount: s.wallMount + d.wallMount,
+    stand: s.stand + d.stand,
+    homeMulti: s.homeMulti + d.homeMulti,
+    systemAc: s.systemAc + d.systemAc,
+    preVisit: s.preVisit + d.preVisit,
+    moveInstall: s.moveInstall + d.moveInstall,
+  }), { totalInstall: 0, wallMount: 0, stand: 0, homeMulti: 0, systemAc: 0, preVisit: 0, moveInstall: 0 })
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-gray-100 text-xs">
+            <th className="border px-3 py-2 text-left">기사명</th>
+            <th className="border px-3 py-2 text-left text-gray-500">차량번호</th>
+            <th className="border px-3 py-2 text-right">배송건</th>
+            <th className="border px-3 py-2 text-right font-bold">설치대수</th>
+            <th className="border px-3 py-2 text-center">벽걸이</th>
+            <th className="border px-3 py-2 text-center">스탠드</th>
+            <th className="border px-3 py-2 text-center">홈멀티</th>
+            <th className="border px-3 py-2 text-center">[시스템]</th>
+            <th className="border px-3 py-2 text-center">이전</th>
+            <th className="border px-3 py-2 text-center">사전방문</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((d, i) => (
+            <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
+              <td className="border px-3 py-1.5 font-medium">
+                {d.driverName}
+                {d.matched === false && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
+              </td>
+              <td className="border px-3 py-1.5 text-xs text-gray-400 font-mono">{d.vehicleNo || '-'}</td>
+              <td className="border px-3 py-1.5 text-right text-gray-600">{d.deliveryCount}</td>
+              <td className="border px-3 py-1.5 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.wallMount, 'text-blue-600')}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.stand, 'text-green-600')}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.homeMulti, 'text-purple-600')}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.systemAc, 'text-gray-600')}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.moveInstall, 'text-yellow-600')}</td>
+              <td className="border px-3 py-1.5 text-center">{numCell(d.preVisit, 'text-orange-600')}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-green-50 font-bold text-sm">
+            <td className="border px-3 py-2" colSpan={2}>합계</td>
+            <td className="border px-3 py-2 text-right text-gray-600">{rows.reduce((s, d) => s + d.deliveryCount, 0)}</td>
+            <td className="border px-3 py-2 text-right text-green-700 text-base">{total.totalInstall}</td>
+            <td className="border px-3 py-2 text-center text-blue-600">{total.wallMount || '-'}</td>
+            <td className="border px-3 py-2 text-center text-green-600">{total.stand || '-'}</td>
+            <td className="border px-3 py-2 text-center text-purple-600">{total.homeMulti || '-'}</td>
+            <td className="border px-3 py-2 text-center text-gray-600">{total.systemAc || '-'}</td>
+            <td className="border px-3 py-2 text-center text-yellow-600">{total.moveInstall || '-'}</td>
+            <td className="border px-3 py-2 text-center text-orange-600">{total.preVisit || '-'}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
+function ComparisonTable({ rows }: { rows: ComparisonDriver[] }) {
+  const totalPostponed = rows.reduce((s, r) => s + r.postponed, 0)
+  const totalAdded = rows.reduce((s, r) => s + r.added, 0)
+  const totalMaintained = rows.reduce((s, r) => s + r.maintained, 0)
+
+  return (
+    <div className="space-y-3">
+      {/* 전체 요약 */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-red-50 border border-red-200 rounded p-3 text-center">
+          <div className="text-2xl font-bold text-red-600">{totalPostponed}</div>
+          <div className="text-xs text-red-700 mt-1">연기 (전일→당일 미포함)</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded p-3 text-center">
+          <div className="text-2xl font-bold text-blue-600">{totalAdded}</div>
+          <div className="text-xs text-blue-700 mt-1">추가 (당일 신규 접수)</div>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded p-3 text-center">
+          <div className="text-2xl font-bold text-green-600">{totalMaintained}</div>
+          <div className="text-xs text-green-700 mt-1">유지 (전일·당일 공통)</div>
+        </div>
+      </div>
+
+      {/* 기사별 비교 테이블 */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-100 text-xs">
+              <th className="border px-3 py-2 text-left">기사명</th>
+              <th className="border px-3 py-2 text-center bg-green-50">전일 납기<br /><span className="font-normal text-gray-500">건 / 대</span></th>
+              <th className="border px-3 py-2 text-center bg-blue-50">당일 납기<br /><span className="font-normal text-gray-500">건 / 대</span></th>
+              <th className="border px-3 py-2 text-center bg-red-50">연기</th>
+              <th className="border px-3 py-2 text-center bg-blue-50">추가</th>
+              <th className="border px-3 py-2 text-center bg-green-50">유지</th>
+              <th className="border px-3 py-2 text-center">변동</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const delta = r.sameDayInstallCount - r.prevInstallCount
+              return (
+                <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
+                  <td className="border px-3 py-1.5 font-medium">{r.driverName}</td>
+                  <td className="border px-3 py-1.5 text-center">
+                    <span className="text-gray-700">{r.prevDeliveryCount}건</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span className="font-semibold text-green-700">{r.prevInstallCount}대</span>
+                  </td>
+                  <td className="border px-3 py-1.5 text-center">
+                    <span className="text-gray-700">{r.sameDayDeliveryCount}건</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span className="font-semibold text-blue-700">{r.sameDayInstallCount}대</span>
+                  </td>
+                  <td className="border px-3 py-1.5 text-center">
+                    {r.postponed > 0
+                      ? <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded font-semibold">{r.postponed}</span>
+                      : <span className="text-gray-300">-</span>}
+                  </td>
+                  <td className="border px-3 py-1.5 text-center">
+                    {r.added > 0
+                      ? <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">{r.added}</span>
+                      : <span className="text-gray-300">-</span>}
+                  </td>
+                  <td className="border px-3 py-1.5 text-center">
+                    {r.maintained > 0
+                      ? <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded">{r.maintained}</span>
+                      : <span className="text-gray-300">-</span>}
+                  </td>
+                  <td className="border px-3 py-1.5 text-center font-semibold">
+                    {delta > 0
+                      ? <span className="text-blue-600">+{delta}</span>
+                      : delta < 0
+                        ? <span className="text-red-600">{delta}</span>
+                        : <span className="text-gray-400">0</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function UploadPage() {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+
+  // 업로드 폼 상태
+  const [uploadType, setUploadType] = useState<'PREV_DELIVERY' | 'SAME_DAY_DELIVERY'>('PREV_DELIVERY')
+  const [installDate, setInstallDate] = useState(todayStr)
   const [file, setFile] = useState<File | null>(null)
-  const [result, setResult] = useState<UploadResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'driver' | 'delivery' | 'items'>('driver')
 
-  // 기사 목록 (미매칭 차량 배정용)
-  const [allDrivers, setAllDrivers] = useState<Driver[]>([])
-  // vehicleNo → driverId 매핑 (사용자 선택)
+  // 달력 상태
+  const [calYear, setCalYear] = useState(now.getFullYear())
+  const [calMonth, setCalMonth] = useState(now.getMonth() + 1)
+  const [calendarDates, setCalendarDates] = useState<DateInfo[]>([])
+  const [calLoading, setCalLoading] = useState(false)
+
+  // 결과 상태
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [viewData, setViewData] = useState<ViewData | null>(null)
+  const [viewLoading, setViewLoading] = useState(false)
+
+  // 결과 탭 (기사별 요약 / 비교)
+  const [resultTab, setResultTab] = useState<'driver' | 'compare'>('driver')
+  // 기사별 탭 내 서브탭 (과거 날짜 조회 시)
+  const [driverSubTab, setDriverSubTab] = useState<'prev' | 'sameday'>('prev')
+
+  // 미매칭 차량번호 처리
+  const [allDrivers, setAllDrivers] = useState<DriverRecord[]>([])
   const [vehicleAssign, setVehicleAssign] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
 
+  // 기사 목록 로드
   useEffect(() => {
     fetch('/api/drivers')
       .then(r => r.json())
-      .then((data: Driver[]) => setAllDrivers(data))
+      .then((data: DriverRecord[]) => setAllDrivers(data))
       .catch(() => {})
   }, [])
 
+  // 달력 데이터 로드
+  const loadCalendar = useCallback(async (year: number, month: number) => {
+    setCalLoading(true)
+    try {
+      const res = await fetch(`/api/delivery/dates?year=${year}&month=${month}`)
+      const data = await res.json()
+      setCalendarDates(data.dates ?? [])
+    } catch {
+      setCalendarDates([])
+    } finally {
+      setCalLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCalendar(calYear, calMonth)
+  }, [calYear, calMonth, loadCalendar])
+
+  // 날짜 클릭 → 해당 날짜 데이터 조회
+  const loadDateView = async (date: string) => {
+    setViewLoading(true)
+    setSelectedDate(date)
+    setUploadResult(null)
+    setInstallDate(date)
+    try {
+      const res = await fetch(`/api/delivery/compare?date=${date}`)
+      const data: ViewData = await res.json()
+      setViewData(data)
+      if (data.comparison) setResultTab('compare')
+      else {
+        setResultTab('driver')
+        setDriverSubTab(data.sameDaySession ? 'sameday' : 'prev')
+      }
+    } catch {
+      setViewData(null)
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  // 업로드 처리
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file) return
     setLoading(true)
     setError('')
-    setResult(null)
+    setUploadResult(null)
+    setViewData(null)
     setSaveMsg('')
     setVehicleAssign({})
 
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await fetch('/api/upload/prev-dispatch', { method: 'POST', body: formData })
+      formData.append('uploadType', uploadType)
+      formData.append('installDate', installDate)
+
+      const res = await fetch('/api/delivery/upload', { method: 'POST', body: formData })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || '업로드 실패')
-      setResult(json)
+
+      setUploadResult(json)
+      setSelectedDate(installDate)
+      if (json.comparison) setResultTab('compare')
+      else setResultTab('driver')
+
+      // 달력 갱신
+      const d = new Date(installDate)
+      if (d.getFullYear() === calYear && d.getMonth() + 1 === calMonth) {
+        loadCalendar(calYear, calMonth)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다')
     } finally {
@@ -131,10 +361,10 @@ export default function UploadPage() {
     }
   }
 
-  // 미매칭 차량번호를 선택한 기사에게 저장 (vehicleNumber 업데이트)
+  // 미매칭 차량번호 기사 저장
   const handleSaveAssign = async () => {
     const entries = Object.entries(vehicleAssign).filter(([, dId]) => dId)
-    if (entries.length === 0) return
+    if (!entries.length) return
     setSaving(true)
     setSaveMsg('')
     try {
@@ -147,7 +377,7 @@ export default function UploadPage() {
           })
         )
       )
-      setSaveMsg(`${entries.length}명 차량번호 저장 완료. 파일을 다시 업로드하면 기사명이 표시됩니다.`)
+      setSaveMsg(`${entries.length}명 저장 완료. 파일을 다시 업로드하면 기사명이 표시됩니다.`)
     } catch {
       setSaveMsg('저장 중 오류가 발생했습니다')
     } finally {
@@ -155,84 +385,184 @@ export default function UploadPage() {
     }
   }
 
-  const numCell = (n: number, color: string) =>
-    n > 0 ? <span className={`${color} font-medium`}>{n}</span> : <span className="text-gray-300">-</span>
+  // 달력 렌더링
+  const dateInfoMap = new Map(calendarDates.map(d => [d.date, d]))
+
+  function renderCalendar() {
+    const firstDay = new Date(calYear, calMonth - 1, 1).getDay()
+    const totalDays = new Date(calYear, calMonth, 0).getDate()
+    const cells = []
+
+    for (let i = 0; i < firstDay; i++) {
+      cells.push(<div key={`e-${i}`} />)
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const mm = String(calMonth).padStart(2, '0')
+      const dd = String(d).padStart(2, '0')
+      const dateStr = `${calYear}-${mm}-${dd}`
+      const info = dateInfoMap.get(dateStr)
+      const isToday = dateStr === todayStr
+      const isSelected = dateStr === selectedDate
+
+      cells.push(
+        <button
+          key={dateStr}
+          onClick={() => loadDateView(dateStr)}
+          className={`
+            relative h-10 rounded text-center flex flex-col items-center justify-center text-sm transition-colors
+            ${isSelected
+              ? 'bg-blue-600 text-white font-bold'
+              : isToday
+                ? 'bg-blue-50 text-blue-700 font-bold ring-1 ring-blue-400'
+                : 'hover:bg-gray-100 text-gray-700'}
+          `}
+        >
+          <span>{d}</span>
+          {info && (
+            <div className="flex gap-0.5 mt-0.5">
+              {info.hasPrev && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-green-300' : 'bg-green-500'}`} />}
+              {info.hasSameDay && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-blue-200' : 'bg-blue-500'}`} />}
+            </div>
+          )}
+        </button>
+      )
+    }
+    return cells
+  }
+
+  // 결과 섹션에서 표시할 데이터 결정
+  const showResult = !!(uploadResult || viewData)
+
+  // 현재 표시할 기사별 요약 (업로드 결과 or 날짜 조회)
+  const getDriverSummary = (): DriverSummaryItem[] | null => {
+    if (uploadResult) return uploadResult.driverSummary
+    if (viewData) {
+      if (driverSubTab === 'sameday') return viewData.sameDaySession?.driverSummary ?? null
+      return viewData.prevSession?.driverSummary ?? viewData.sameDaySession?.driverSummary ?? null
+    }
+    return null
+  }
+
+  const getComparison = (): ComparisonDriver[] | null => {
+    return uploadResult?.comparison ?? viewData?.comparison ?? null
+  }
+
+  const hasComparison = !!(getComparison())
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-green-700 text-white p-4 flex items-center gap-4">
         <Link href="/" className="text-green-200 hover:text-white text-sm">← 홈</Link>
-        <h1 className="text-xl font-bold">납기전 배차 업로드</h1>
+        <h1 className="text-xl font-bold">납기 업로드</h1>
+        <span className="text-green-200 text-sm">전일 납기 · 당일 납기 관리 및 비교</span>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6">
-        {/* 업로드 폼 */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="font-semibold text-gray-700 mb-4">SAP 납기전 배차 파일 업로드</h2>
-          <form onSubmit={handleUpload} className="space-y-4">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-green-400 transition-colors">
-              <input type="file" accept=".xlsx,.xls"
-                onChange={e => setFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer" />
-              {file && <p className="mt-2 text-sm text-green-700 font-medium">{file.name} ({(file.size / 1024).toFixed(1)} KB)</p>}
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-700">
-              <strong>자동 감지:</strong> Delivery 번호(73xxxxxxxx) · 모델코드(AR/AF/AC/L-) · 차량번호(예: 83호7091) → DB 기사명 매칭
-            </div>
-            {error && <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{error}</div>}
-            <button type="submit" disabled={!file || loading}
-              className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 disabled:opacity-50 font-medium">
-              {loading ? '처리 중...' : '업로드 및 처리'}
-            </button>
-          </form>
-        </div>
+      <main className="max-w-7xl mx-auto p-4 md:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-        {result && (
-          <div className="space-y-4">
-            {/* 요약 카드 */}
+          {/* ── 업로드 폼 (3/5) ── */}
+          <div className="lg:col-span-3 space-y-4">
             <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-green-600 text-xl">✓</span>
-                <h3 className="font-semibold text-gray-700">처리 완료</h3>
+              <h2 className="font-semibold text-gray-700 mb-4">납기 파일 업로드</h2>
+
+              {/* 타입 선택 */}
+              <div className="flex gap-2 mb-4">
+                {(['PREV_DELIVERY', 'SAME_DAY_DELIVERY'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setUploadType(t)}
+                    className={`flex-1 py-3 rounded-lg text-sm font-medium border-2 transition-colors ${
+                      uploadType === t
+                        ? t === 'PREV_DELIVERY'
+                          ? 'border-green-600 bg-green-600 text-white'
+                          : 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    {t === 'PREV_DELIVERY' ? '전일 납기' : '당일 납기'}
+                    <span className="block text-xs mt-0.5 font-normal opacity-75">
+                      {t === 'PREV_DELIVERY' ? '설치 전날 업로드 (배차 기준)' : '설치 당일 오전 업로드 (연기/추가 확인)'}
+                    </span>
+                  </button>
+                ))}
               </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="bg-green-50 rounded p-3 text-center">
-                  <div className="text-2xl font-bold text-green-600">{result.totalRows}</div>
-                  <div className="text-xs text-gray-500 mt-1">전체 행</div>
-                </div>
-                <div className="bg-blue-50 rounded p-3 text-center">
-                  <div className="text-2xl font-bold text-blue-600">{result.deliveryCount}</div>
-                  <div className="text-xs text-gray-500 mt-1">배송건수</div>
-                </div>
-                <div className="bg-purple-50 rounded p-3 text-center">
-                  <div className="text-2xl font-bold text-purple-600">{result.driverCount}</div>
-                  <div className="text-xs text-gray-500 mt-1">기사수</div>
-                </div>
-                <div className="bg-orange-50 rounded p-3 text-center">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {result.driverSummary.reduce((s, d) => s + d.totalInstall, 0)}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">총 설치대수</div>
-                </div>
+
+              {/* 설명 박스 */}
+              <div className={`rounded p-3 mb-4 text-xs ${
+                uploadType === 'PREV_DELIVERY'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+              }`}>
+                {uploadType === 'PREV_DELIVERY'
+                  ? '예) 5월 20일 설치 → 5월 19일에 전일 납기 업로드 → 기사 배차 및 전화확정 기준'
+                  : '예) 5월 20일 오전 → 당일 납기 업로드 → 전일 대비 연기·추가 건수 자동 비교'}
               </div>
+
+              {/* 설치일 */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  설치일 <span className="text-red-500">*</span>
+                  <span className="text-gray-400 font-normal ml-1">(전일/당일 납기 모두 설치일 기준으로 입력)</span>
+                </label>
+                <input
+                  type="date"
+                  value={installDate}
+                  onChange={e => setInstallDate(e.target.value)}
+                  className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 w-44"
+                />
+              </div>
+
+              {/* 파일 업로드 */}
+              <form onSubmit={handleUpload} className="space-y-3">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-5 text-center hover:border-green-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={e => setFile(e.target.files?.[0] || null)}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"
+                  />
+                  {file && (
+                    <p className="mt-2 text-sm text-green-700 font-medium">
+                      {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded p-2.5 text-xs text-gray-500">
+                  자동 감지: Delivery 번호(73xxxxxxxx) · 모델코드(AR/AF/AC/L-) · 차량번호 → DB 기사명 매칭
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{error}</div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!file || loading || !installDate}
+                  className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 disabled:opacity-50 font-medium text-sm"
+                >
+                  {loading ? '처리 중...' : '업로드 및 처리'}
+                </button>
+              </form>
             </div>
 
-            {/* 미매칭 차량번호 → 기사 즉시 배정 */}
-            {result.unmatchedVehicles.length > 0 && (
+            {/* 미매칭 차량번호 */}
+            {uploadResult && uploadResult.unmatchedVehicles.length > 0 && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="font-semibold text-yellow-700 mb-3">
-                  ⚠ 미매칭 차량번호 배정 ({result.unmatchedVehicles.length}개)
+                  ⚠ 미매칭 차량번호 ({uploadResult.unmatchedVehicles.length}개)
                 </h3>
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-xs text-gray-500 mb-3">
                   차량번호를 기사와 연결하면 DB에 저장됩니다. 이후 업로드 시 자동 매칭됩니다.
                 </p>
                 <div className="space-y-2">
-                  {result.unmatchedVehicles.map(vno => (
+                  {uploadResult.unmatchedVehicles.map(vno => (
                     <div key={vno} className="flex items-center gap-3">
-                      <span className="w-32 font-mono text-sm bg-yellow-50 border border-yellow-200 rounded px-2 py-1.5 text-yellow-800">
+                      <span className="w-28 font-mono text-sm bg-yellow-50 border border-yellow-200 rounded px-2 py-1.5 text-yellow-800">
                         {vno}
                       </span>
-                      <span className="text-gray-400 text-sm">→</span>
+                      <span className="text-gray-400">→</span>
                       <select
                         value={vehicleAssign[vno] ?? ''}
                         onChange={e => setVehicleAssign(prev => ({ ...prev, [vno]: e.target.value }))}
@@ -248,166 +578,255 @@ export default function UploadPage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 flex items-center gap-4">
+                <div className="mt-3 flex items-center gap-3">
                   <button
                     onClick={handleSaveAssign}
                     disabled={saving || Object.values(vehicleAssign).every(v => !v)}
-                    className="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 disabled:opacity-40 text-sm font-medium"
+                    className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700 disabled:opacity-40"
                   >
-                    {saving ? '저장 중...' : '차량번호 저장 후 재업로드 가능'}
+                    {saving ? '저장 중...' : '차량번호 저장'}
                   </button>
                   {saveMsg && <p className="text-sm text-green-700">{saveMsg}</p>}
                 </div>
               </div>
             )}
+          </div>
 
-            {/* 기사별 요약 탭 */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex border-b mb-4">
-                {(['driver', 'delivery', 'items'] as const).map(t => (
-                  <button key={t} onClick={() => setActiveTab(t)}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                      activeTab === t ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}>
-                    {t === 'driver' ? `기사별 요약 (${result.driverSummary.length}명)`
-                      : t === 'delivery' ? `배송건별 (${result.deliverySummary.length}건)`
-                      : `행별 상세 (${result.items.length}건)`}
+          {/* ── 달력 (2/5) ── */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow p-4 sticky top-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-700 text-sm">날짜별 현황</h3>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12) }
+                      else setCalMonth(m => m - 1)
+                    }}
+                    className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600 flex items-center justify-center text-lg"
+                  >
+                    ‹
                   </button>
+                  <span className="text-sm font-medium w-20 text-center">{calYear}년 {calMonth}월</span>
+                  <button
+                    onClick={() => {
+                      if (calMonth === 12) { setCalYear(y => y + 1); setCalMonth(1) }
+                      else setCalMonth(m => m + 1)
+                    }}
+                    className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600 flex items-center justify-center text-lg"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+
+              {/* 요일 헤더 */}
+              <div className="grid grid-cols-7 text-center text-xs text-gray-400 mb-1">
+                {['일', '월', '화', '수', '목', '금', '토'].map(d => (
+                  <div key={d} className="py-1">{d}</div>
                 ))}
               </div>
 
-              {/* 기사별 */}
-              {activeTab === 'driver' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border px-3 py-2 text-left">기사명</th>
-                        <th className="border px-3 py-2 text-left text-xs text-gray-500">차량번호</th>
-                        <th className="border px-3 py-2 text-right font-bold">설치대수</th>
-                        <th className="border px-3 py-2 text-center text-xs">벽걸이</th>
-                        <th className="border px-3 py-2 text-center text-xs">스탠드</th>
-                        <th className="border px-3 py-2 text-center text-xs">홈멀티</th>
-                        <th className="border px-3 py-2 text-center text-xs">[시스템]</th>
-                        <th className="border px-3 py-2 text-center text-xs">이전설치</th>
-                        <th className="border px-3 py-2 text-center text-xs">사전방문</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.driverSummary.map((d, i) => (
-                        <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                          <td className="border px-3 py-2 font-medium">
-                            {d.driverName}
-                            {!d.matched && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
-                          </td>
-                          <td className="border px-3 py-2 text-xs text-gray-500 font-mono">
-                            {d.vehicleNo || <span className="text-red-300">미감지</span>}
-                          </td>
-                          <td className="border px-3 py-2 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.wallMount, 'text-blue-600')}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.stand, 'text-green-600')}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.homeMulti, 'text-purple-600')}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.systemAc, 'text-gray-600')}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.moveInstall, 'text-yellow-600')}</td>
-                          <td className="border px-3 py-2 text-center">{numCell(d.preVisit, 'text-orange-600')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-green-50 font-bold">
-                        <td className="border px-3 py-2" colSpan={2}>합계</td>
-                        <td className="border px-3 py-2 text-right text-green-700 text-base">
-                          {result.driverSummary.reduce((s, d) => s + d.totalInstall, 0)}
-                        </td>
-                        <td className="border px-3 py-2 text-center text-blue-600">{result.driverSummary.reduce((s, d) => s + d.wallMount, 0) || '-'}</td>
-                        <td className="border px-3 py-2 text-center text-green-600">{result.driverSummary.reduce((s, d) => s + d.stand, 0) || '-'}</td>
-                        <td className="border px-3 py-2 text-center text-purple-600">{result.driverSummary.reduce((s, d) => s + d.homeMulti, 0) || '-'}</td>
-                        <td className="border px-3 py-2 text-center text-gray-600">{result.driverSummary.reduce((s, d) => s + d.systemAc, 0) || '-'}</td>
-                        <td className="border px-3 py-2 text-center text-yellow-600">{result.driverSummary.reduce((s, d) => s + d.moveInstall, 0) || '-'}</td>
-                        <td className="border px-3 py-2 text-center text-orange-600">{result.driverSummary.reduce((s, d) => s + d.preVisit, 0) || '-'}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
+              {/* 달력 그리드 */}
+              <div className="grid grid-cols-7 gap-0.5">
+                {calLoading
+                  ? <div className="col-span-7 text-center text-sm text-gray-400 py-8">로딩 중...</div>
+                  : renderCalendar()}
+              </div>
 
-              {/* 배송건별 */}
-              {activeTab === 'delivery' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border px-3 py-2 text-left">Delivery</th>
-                        <th className="border px-3 py-2 text-left">기사명</th>
-                        <th className="border px-3 py-2 text-left text-xs text-gray-500">차량번호</th>
-                        <th className="border px-3 py-2 text-center">유형</th>
-                        <th className="border px-3 py-2 text-right font-bold">설치대수</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.deliverySummary
-                        .sort((a, b) => a.driverName.localeCompare(b.driverName))
-                        .map((d, i) => (
-                          <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                            <td className="border px-3 py-2 font-mono text-xs">{d.deliveryNo}</td>
-                            <td className="border px-3 py-2">
-                              {d.driverName}
-                              {!d.matched && <span className="ml-1 text-xs text-yellow-500">⚠</span>}
-                            </td>
-                            <td className="border px-3 py-2 text-xs text-gray-400 font-mono">{d.vehicleNo}</td>
-                            <td className="border px-3 py-2 text-center"><DeliveryTypeTag d={d} /></td>
-                            <td className="border px-3 py-2 text-right font-bold text-green-700">{d.totalInstall}</td>
-                          </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* 범례 */}
+              <div className="mt-3 pt-3 border-t flex gap-4 text-xs text-gray-500">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                  전일 납기
                 </div>
-              )}
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                  당일 납기
+                </div>
+              </div>
 
-              {/* 행별 상세 */}
-              {activeTab === 'items' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border px-3 py-2 text-left">Delivery</th>
-                        <th className="border px-3 py-2 text-left">기사명</th>
-                        <th className="border px-3 py-2 text-left">MATNR</th>
-                        <th className="border px-3 py-2 text-center">유형</th>
-                        <th className="border px-3 py-2 text-right">설치대수</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.items.slice(0, 100).map((item, i) => (
-                        <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-                          <td className="border px-3 py-1 font-mono text-xs">{item.deliveryNo}</td>
-                          <td className="border px-3 py-1 text-xs">
-                            {item.driverName}
-                            {!item.matched && <span className="ml-1 text-yellow-400 text-xs">⚠</span>}
-                          </td>
-                          <td className="border px-3 py-1 font-mono text-xs">{item.matnr || '-'}</td>
-                          <td className="border px-3 py-1 text-center">
-                            <span className={`px-2 py-0.5 rounded text-xs ${MODEL_TYPE_CLASSES[item.modelType] || 'bg-gray-100 text-gray-600'}`}>
-                              {MODEL_TYPE_LABELS[item.modelType] || item.modelType}
-                            </span>
-                          </td>
-                          <td className="border px-3 py-1 text-right font-medium">
-                            <span className={item.installCount === 0 ? 'text-gray-300' : 'text-green-700'}>
-                              {item.installCount}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {result.items.length > 100 && (
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      외 {result.items.length - 100}건 (총 {result.items.length}건)
-                    </p>
-                  )}
+              {/* 선택된 날짜 빠른 정보 */}
+              {selectedDate && (
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-xs text-gray-500 mb-1">
+                    선택: <span className="font-medium text-gray-700">{selectedDate}</span>
+                  </p>
+                  {(() => {
+                    const info = dateInfoMap.get(selectedDate)
+                    if (!info) return <p className="text-xs text-gray-400">업로드 없음</p>
+                    return (
+                      <div className="space-y-1 text-xs">
+                        {info.hasPrev && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-green-500" />
+                            <span className="text-gray-600">전일 납기 {info.prevInstallCount}대</span>
+                          </div>
+                        )}
+                        {info.hasSameDay && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            <span className="text-gray-600">당일 납기 {info.sameDayInstallCount}대</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* ── 결과 섹션 ── */}
+        {(showResult || viewLoading) && (
+          <div className="mt-6">
+            {viewLoading && (
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-400">
+                데이터 로딩 중...
+              </div>
+            )}
+
+            {!viewLoading && showResult && (
+              <div className="bg-white rounded-lg shadow">
+                {/* 결과 헤더 */}
+                <div className="p-4 border-b">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-green-600 font-bold">✓</span>
+                      <span className="font-semibold text-gray-700">
+                        {selectedDate} 설치일 납기 현황
+                      </span>
+                      {uploadResult && (
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          uploadResult.uploadType === 'PREV_DELIVERY'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {uploadResult.uploadType === 'PREV_DELIVERY' ? '전일 납기 업로드 완료' : '당일 납기 업로드 완료'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 요약 카드들 */}
+                    <div className="flex gap-2 text-sm">
+                      {(viewData?.prevSession || (uploadResult?.uploadType === 'PREV_DELIVERY')) && (
+                        <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5 text-center">
+                          <div className="font-bold text-green-700">
+                            {uploadResult?.uploadType === 'PREV_DELIVERY'
+                              ? uploadResult.driverSummary.reduce((s, d) => s + d.totalInstall, 0)
+                              : viewData?.prevSession?.totalInstall ?? 0}대
+                          </div>
+                          <div className="text-xs text-green-600">전일 납기</div>
+                        </div>
+                      )}
+                      {(viewData?.sameDaySession || (uploadResult?.uploadType === 'SAME_DAY_DELIVERY')) && (
+                        <div className="bg-blue-50 border border-blue-200 rounded px-3 py-1.5 text-center">
+                          <div className="font-bold text-blue-700">
+                            {uploadResult?.uploadType === 'SAME_DAY_DELIVERY'
+                              ? uploadResult.driverSummary.reduce((s, d) => s + d.totalInstall, 0)
+                              : viewData?.sameDaySession?.totalInstall ?? 0}대
+                          </div>
+                          <div className="text-xs text-blue-600">당일 납기</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 세션 정보 (날짜 조회 시) */}
+                  {viewData && (
+                    <div className="mt-2 flex gap-4 text-xs text-gray-400">
+                      {viewData.prevSession && (
+                        <span>전일 납기: {viewData.prevSession.fileName} · {formatDate(viewData.prevSession.uploadedAt)} 업로드</span>
+                      )}
+                      {viewData.sameDaySession && (
+                        <span>당일 납기: {viewData.sameDaySession.fileName} · {formatDate(viewData.sameDaySession.uploadedAt)} 업로드</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 탭 */}
+                <div className="flex border-b px-4">
+                  <button
+                    onClick={() => setResultTab('driver')}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                      resultTab === 'driver'
+                        ? 'border-green-600 text-green-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    기사별 요약
+                  </button>
+                  {hasComparison && (
+                    <button
+                      onClick={() => setResultTab('compare')}
+                      className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                        resultTab === 'compare'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      전일 vs 당일 비교
+                      {(() => {
+                        const comp = getComparison()
+                        if (!comp) return null
+                        const postponed = comp.reduce((s, r) => s + r.postponed, 0)
+                        const added = comp.reduce((s, r) => s + r.added, 0)
+                        return (postponed + added > 0)
+                          ? <span className="ml-1 px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-xs">{postponed + added}</span>
+                          : null
+                      })()}
+                    </button>
+                  )}
+                </div>
+
+                {/* 탭 컨텐츠 */}
+                <div className="p-4">
+                  {resultTab === 'driver' && (
+                    <div>
+                      {/* 날짜 조회 시 전일/당일 서브탭 */}
+                      {viewData && viewData.prevSession && viewData.sameDaySession && (
+                        <div className="flex gap-2 mb-3">
+                          <button
+                            onClick={() => setDriverSubTab('prev')}
+                            className={`px-3 py-1 rounded text-xs font-medium border ${
+                              driverSubTab === 'prev'
+                                ? 'border-green-600 bg-green-600 text-white'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            전일 납기 ({viewData.prevSession.totalInstall}대)
+                          </button>
+                          <button
+                            onClick={() => setDriverSubTab('sameday')}
+                            className={`px-3 py-1 rounded text-xs font-medium border ${
+                              driverSubTab === 'sameday'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            당일 납기 ({viewData.sameDaySession.totalInstall}대)
+                          </button>
+                        </div>
+                      )}
+
+                      {getDriverSummary()
+                        ? <DriverSummaryTable rows={getDriverSummary()!} />
+                        : <p className="text-sm text-gray-400 text-center py-8">데이터가 없습니다</p>}
+                    </div>
+                  )}
+
+                  {resultTab === 'compare' && (
+                    <div>
+                      {getComparison()
+                        ? <ComparisonTable rows={getComparison()!} />
+                        : <p className="text-sm text-gray-400 text-center py-8">비교 데이터가 없습니다</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
