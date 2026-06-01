@@ -21,12 +21,12 @@ if not exist "Z:\" (
 )
 
 rem DB 폴더 생성
-if not exist "Z:\dispatch" mkdir "Z:\dispatch"
+if not exist "Z:\제주물류센터자동화" mkdir "Z:\제주물류센터자동화"
 
-echo [OK] 서버 DB 폴더: Z:\dispatch\dispatch.db
+echo [OK] 서버 DB 폴더: Z:\제주물류센터자동화\dispatch.db
 
 rem 환경변수 설정
-set DATABASE_URL=file:Z:/dispatch/dispatch.db
+set DATABASE_URL=file:Z:/제주물류센터자동화/dispatch.db
 set NEXTAUTH_SECRET=dispatch-secret-key-change-in-production
 
 rem 앱 디렉토리로 이동

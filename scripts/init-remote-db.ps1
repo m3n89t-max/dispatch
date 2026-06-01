@@ -9,11 +9,11 @@ if (-not (Test-Path "Z:\")) {
 }
 
 # DB 폴더 생성
-New-Item -ItemType Directory -Force "Z:\dispatch" | Out-Null
+New-Item -ItemType Directory -Force "Z:\제주물류센터자동화" | Out-Null
 
-Write-Host "서버 DB 경로: Z:\dispatch\dispatch.db" -ForegroundColor Cyan
+Write-Host "서버 DB 경로: Z:\제주물류센터자동화\dispatch.db" -ForegroundColor Cyan
 
-$env:DATABASE_URL = "file:Z:/dispatch/dispatch.db"
+$env:DATABASE_URL = "file:Z:/제주물류센터자동화/dispatch.db"
 
 Write-Host "스키마 push 중..." -ForegroundColor Cyan
 node node_modules/prisma/build/index.js db push --schema ./prisma/schema.prisma
@@ -23,4 +23,4 @@ node node_modules/prisma/build/index.js generate
 
 Write-Host ""
 Write-Host "완료! 배차 DB가 서버에 초기화됐습니다." -ForegroundColor Green
-Write-Host "DB 위치: \\23.20.121.23\common\dispatch\dispatch.db" -ForegroundColor Green
+Write-Host "DB 위치: \\23.20.121.23\common\제주물류센터자동화\dispatch.db" -ForegroundColor Green
