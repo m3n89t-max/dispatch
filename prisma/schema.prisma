@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 // 기사/팀 정보
@@ -230,9 +230,11 @@ model DeliverySession {
 }
 
 enum UploadType {
-  DISPATCH // 전일배차
-  CONFIRM  // 납기확정
-  COMPLETE // 설치완료
+  DISPATCH          // 전일배차 (실적분석용)
+  CONFIRM           // 납기확정
+  COMPLETE          // 설치완료
+  PREV_DELIVERY     // 전일 납기
+  SAME_DAY_DELIVERY // 당일 납기
 }
 
 // 개별 배송 건 (Delivery 번호 기준 매칭)
@@ -250,6 +252,63 @@ model DeliveryRecord {
   @@index([deliveryNo])
   @@index([customerName])
   @@index([sessionId])
+}
+
+// 결근/부재 기록
+model DriverAbsence {
+  id          String   @id @default(cuid())
+  driverName  String
+  date        String   // "YYYY-MM-DD"
+  absenceType String
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([driverName, date])
+}
+
+// 월 마감
+model MonthClose {
+  id        String   @id @default(cuid())
+  yearMonth String   @unique // "YYYY-MM"
+  closedAt  DateTime @default(now())
+  note      String?
+  closedBy  String?
+  createdAt DateTime @default(now())
+}
+
+// 기사별 월 NPS 실적
+model DriverNPS {
+  id        String  @id @default(cuid())
+  driverName String
+  vehicleNo  String?
+  yearMonth  String  // "YYYY-MM"
+
+  acTotal        Int?
+  acRecommend    Int?
+  acNeutral      Int?
+  acNotRecommend Int?
+  acServiceNPS   Float?
+  acInstallNPS   Float?
+
+  mvTotal        Int?
+  mvRecommend    Int?
+  mvNeutral      Int?
+  mvNotRecommend Int?
+  mvServiceNPS   Float?
+  mvInstallNPS   Float?
+
+  vocTotal       Int?
+  vocRecommend   Int?
+  vocNeutral     Int?
+  vocNotRecommend Int?
+  vocRepurchase  Float?
+  vocScore       Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([driverName, yearMonth])
 }
 
 // 사용자 (권한 관리)
