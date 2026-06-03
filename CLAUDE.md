@@ -16,10 +16,12 @@
 - 시스템에어컨 = 1 (설치대수 포함, **"시스템"으로 별도 표기**)
 
 ### 모델 규칙
+- MATNR startswith `AC` → 시스템에어컨/천정형 (1, [시스템] 별도 표기)
+- MATNR startswith `AP` → 업소용 ([업소용] 별도 표기, 1)
 - MATNR startswith `AR` → 벽걸이 (1)
-- MATNR startswith `AF` + 끝 영문 3자리 → 홈멀티 (2)
+- MATNR startswith `AF` + W로 시작하는 suffix (WN, WRS, WZN, WZRS 등) → 홈멀티 실내기 (1)
+- MATNR startswith `AF` + N/X로 끝나는 suffix → 실외기 → 제외 (0)
 - MATNR startswith `AF` → 스탠드 (1)
-- MATNR startswith `AC` → 시스템에어컨 (1, 별도 표기)
 
 ### 예외
 - AUGRU = ZL4 → 사전방문 → 설치대수 제외
@@ -92,26 +94,20 @@ node node_modules/typescript/bin/tsc --noEmit
 - 에러 0개 확인 후 다음 단계 진행
 
 ### 2단계 — 도메인 로직 검증 (모델 판정)
+
+CLAUDE.md의 2단계는 참고용입니다. 실제 검증은 `/validate` 스킬을 사용하세요 (TypeScript 파일이라 ts-node 필요).
+
 ```bash
-node -e "
-const { judgeModelType, getInstallCount } = require('./src/lib/modelJudge');
-const cases = [
-  ['ARWT',   undefined, 'WALL_MOUNT', 1],
-  ['AF09GT', undefined, 'STAND',      1],
-  ['AFWRS',  undefined, 'HOME_MULTI', 1],
-  ['AC12345',undefined, 'SYSTEM_AC',  1],
-  ['ARWT',   'ZL4',     'PRE_VISIT',  0],
-];
-let pass = true;
-for (const [matnr, augru, expectedType, expectedCount] of cases) {
-  const type = judgeModelType(matnr, augru);
-  const count = getInstallCount(type);
-  const ok = type === expectedType && count === expectedCount;
-  console.log(ok ? 'PASS' : 'FAIL', matnr, augru, '->', type, count);
-  if (!ok) pass = false;
-}
-console.log(pass ? '모든 케이스 통과' : '실패 케이스 있음');
-"
+# validate 스킬 케이스 (tsconfig.test.json + ts-node 방식으로 실행)
+# ARWT    → WALL_MOUNT (1)   벽걸이
+# AF09GT  → STAND (1)        스탠드
+# AFWRS   → HOME_MULTI (1)   홈멀티 실내기
+# AF18HSGRS → STAND (1)      스탠드 (GRS suffix)
+# AC12345 → SYSTEM_AC (1)    시스템에어컨
+# ARWT+ZL4 → PRE_VISIT (0)   사전방문
+# AP072CNPPBH1 → COMMERCIAL (1) 업소용
+# AF18HSGDBH1N → UNKNOWN (0) 실외기 (N-ending)
+# AF90H17D01BX → UNKNOWN (0) 실외기 (X-ending/BX)
 ```
 
 ### 3단계 — 빌드 확인

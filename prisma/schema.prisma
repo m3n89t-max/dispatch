@@ -125,7 +125,8 @@ enum ModelType {
   WALL_MOUNT   // 벽걸이
   STAND        // 스탠드
   HOME_MULTI   // 홈멀티
-  SYSTEM_AC    // 시스템에어컨 (설치대수 1, 별도 표기)
+  SYSTEM_AC    // 시스템에어컨/천정형 (설치대수 1, 별도 표기)
+  COMMERCIAL   // 업소용 (AP 접두사)
   PRE_VISIT    // 사전방문 (제외)
   MOVE_INSTALL // 이전설치
   UNKNOWN
