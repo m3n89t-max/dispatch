@@ -96,11 +96,11 @@ node node_modules/typescript/bin/tsc --noEmit
 node -e "
 const { judgeModelType, getInstallCount } = require('./src/lib/modelJudge');
 const cases = [
-  ['AR12345', undefined, 'WALL_MOUNT', 1],
-  ['AF12345', undefined, 'STAND', 1],
-  ['AF123ABC', undefined, 'HOME_MULTI', 2],
-  ['AC12345', undefined, 'SYSTEM_AC', 1],
-  ['AR12345', 'ZL4', 'PRE_VISIT', 0],
+  ['ARWT',   undefined, 'WALL_MOUNT', 1],
+  ['AF09GT', undefined, 'STAND',      1],
+  ['AFWRS',  undefined, 'HOME_MULTI', 1],
+  ['AC12345',undefined, 'SYSTEM_AC',  1],
+  ['ARWT',   'ZL4',     'PRE_VISIT',  0],
 ];
 let pass = true;
 for (const [matnr, augru, expectedType, expectedCount] of cases) {
