@@ -7,15 +7,15 @@ export type ModelType = 'WALL_MOUNT' | 'STAND' | 'HOME_MULTI' | 'SYSTEM_AC' | 'C
  * - MATNR starts with AP → 업소용 (COMMERCIAL) → 설치대수 1
  * - MATNR starts with AR → 벽걸이 (WALL_MOUNT) → 설치대수 1
  *   - ARR 접두사 → UNKNOWN (리모컨)
- *   - KO 접미사 → UNKNOWN (실외기)
+ *   - WXKO 접미사 → UNKNOWN (실외기), WNKO → WALL_MOUNT (한국 실내기)
  *   - 끝 2자리에 숫자 포함 → UNKNOWN (실외기)
- *   - trailing 영문에 N 포함 → UNKNOWN (부품)
+ *   - trailing 영문이 N으로 끝남 → UNKNOWN (부품)
  *   - trailing 영문이 X로 끝남 → UNKNOWN (실외기)
  * - MATNR starts with AF → 스탠드 또는 홈멀티
  *   - AFR 접두사 → UNKNOWN (리모컨)
  *   - 끝 2자리에 숫자 포함 → UNKNOWN (실외기)
- *   - W로 시작하는 영문 suffix (WN, WRS, WZN 등) → HOME_MULTI
- *   - trailing 영문이 N으로 끝남 → UNKNOWN (실외기: GN, BN, IN)
+ *   - 짧은 세트 코드(digit group ≤1)에서 W-suffix → HOME_MULTI (AFWRS, AF18BSWRS)
+ *   - trailing 영문이 N으로 끝남 → UNKNOWN (실외기: WN, GN 등)
  *   - trailing 영문이 X로 끝남 → UNKNOWN (실외기: BX, QBX, PBX)
  *   - 그 외 → STAND (GRS, BRT, BRZ, GRT, GZ, GS, GT 등 스탠드 실내기)
  * - MATNR starts with L- → 이전설치 (MOVE_INSTALL) → 설치대수 1
@@ -33,9 +33,13 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
   if (code.startsWith('AR')) {
     if (code.startsWith('ARR')) return 'UNKNOWN'
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
-    if (code.endsWith('KO')) return 'UNKNOWN'
+    if (code.endsWith('KO')) {
+      // WXKO = 실외기(outdoor), WNKO = 한국 시장 실내기(indoor)
+      if (code.slice(0, -2).endsWith('X')) return 'UNKNOWN'
+      // KO 앞이 WN 등 실내기 suffix → 계속 판정
+    }
     const trailingAlpha = code.match(/[A-Z]+$/)
-    if (trailingAlpha && trailingAlpha[0].includes('N')) return 'UNKNOWN'
+    if (trailingAlpha && trailingAlpha[0].endsWith('N')) return 'UNKNOWN'
     if (trailingAlpha && trailingAlpha[0].endsWith('X')) return 'UNKNOWN'
     return 'WALL_MOUNT'
   }
@@ -43,7 +47,10 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
   if (code.startsWith('AF')) {
     if (code.startsWith('AFR')) return 'UNKNOWN'
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
-    if (/W[A-Z]{1,4}$/.test(code)) return 'HOME_MULTI'
+    // 홈멀티: 짧은 세트 코드(digit group ≤1개)에서만 W-suffix 적용 (AFWRS, AF18BSWRS 등)
+    // 전체 품번(AF70F17D11WN)은 자릿수 그룹이 2개 이상 → 여기서 걸리지 않음
+    const digitGroups = code.slice(2).match(/\d+/g) || []
+    if (digitGroups.length <= 1 && /W[A-Z]{1,4}$/.test(code)) return 'HOME_MULTI'
     const trailingAlpha = code.match(/[A-Z]+$/)
     if (trailingAlpha && trailingAlpha[0].endsWith('N')) return 'UNKNOWN'
     if (trailingAlpha && trailingAlpha[0].endsWith('X')) return 'UNKNOWN'
