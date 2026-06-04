@@ -7,10 +7,12 @@ export type ModelType = 'WALL_MOUNT' | 'STAND' | 'HOME_MULTI' | 'SYSTEM_AC' | 'C
  * - MATNR starts with AP → 업소용 (COMMERCIAL) → 설치대수 1
  * - MATNR starts with AR → 벽걸이 (WALL_MOUNT) → 설치대수 1
  *   - ARR 접두사 → UNKNOWN (리모컨)
- *   - WXKO 접미사 → UNKNOWN (실외기), WNKO → WALL_MOUNT (한국 실내기)
+ *   - WXKO/HXKO 접미사 → UNKNOWN (실외기), WNKO → WALL_MOUNT (한국 실내기)
+ *   - HNKO 접미사 → UNKNOWN (실외기 한국형, KO 앞이 WN이 아닌 N)
  *   - 끝 2자리에 숫자 포함 → UNKNOWN (실외기)
  *   - trailing 영문이 N으로 끝남 → UNKNOWN (부품)
  *   - trailing 영문이 X로 끝남 → UNKNOWN (실외기)
+ *   - full 품번(digit group ≥2)에서 T로 끝남 → UNKNOWN (실외기 대체형: WT)
  * - MATNR starts with AF → 스탠드 또는 홈멀티
  *   - AFR 접두사 → UNKNOWN (리모컨)
  *   - 끝 2자리에 숫자 포함 → UNKNOWN (실외기)
@@ -34,13 +36,16 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     if (code.startsWith('ARR')) return 'UNKNOWN'
     if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
     if (code.endsWith('KO')) {
-      // WXKO = 실외기(outdoor), WNKO = 한국 시장 실내기(indoor)
-      if (code.slice(0, -2).endsWith('X')) return 'UNKNOWN'
-      // KO 앞이 WN 등 실내기 suffix → 계속 판정
+      const preKO = code.slice(0, -2)
+      if (preKO.endsWith('X')) return 'UNKNOWN'                          // WXKO, HXKO = 실외기
+      if (preKO.endsWith('N') && !preKO.endsWith('WN')) return 'UNKNOWN' // HNKO = 실외기, WNKO = 실내기
     }
     const trailingAlpha = code.match(/[A-Z]+$/)
     if (trailingAlpha && trailingAlpha[0].endsWith('N')) return 'UNKNOWN'
     if (trailingAlpha && trailingAlpha[0].endsWith('X')) return 'UNKNOWN'
+    // full 품번(digit group ≥2)에서 T 종료 = 실외기 대체형 (ARWT 등 세트코드 제외)
+    const arDigitGroups = (code.match(/\d+/g) || []).length
+    if (arDigitGroups >= 2 && trailingAlpha && trailingAlpha[0].endsWith('T')) return 'UNKNOWN'
     return 'WALL_MOUNT'
   }
 
