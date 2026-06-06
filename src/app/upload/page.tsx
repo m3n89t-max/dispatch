@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import Link from 'next/link'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,7 +89,57 @@ function formatDate(iso: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function DriverSummaryTable({ rows }: { rows: DriverSummaryItem[] }) {
+interface DeliveryDetail {
+  deliveryNo: string
+  customerName: string
+  totalInstall: number
+  items: { matnr: string; modelType: string; installCount: number }[]
+}
+
+const MODEL_TYPE_KR: Record<string, string> = {
+  WALL_MOUNT: '벽걸이',
+  STAND: '스탠드',
+  HOME_MULTI: '홈멀티',
+  SYSTEM_AC: '[시스템]',
+  COMMERCIAL: '[업소용]',
+  PRE_VISIT: '사전방문',
+  MOVE_INSTALL: '이전설치',
+  UNKNOWN: '미분류',
+}
+
+function DriverSummaryTable({
+  rows,
+  installDate,
+  uploadType,
+}: {
+  rows: DriverSummaryItem[]
+  installDate: string
+  uploadType: 'PREV_DELIVERY' | 'SAME_DAY_DELIVERY'
+}) {
+  const [expandedDriver, setExpandedDriver] = useState<string | null>(null)
+  const [details, setDetails] = useState<DeliveryDetail[] | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const handleClickDriver = async (driverName: string) => {
+    if (expandedDriver === driverName) {
+      setExpandedDriver(null)
+      setDetails(null)
+      return
+    }
+    setExpandedDriver(driverName)
+    setDetails(null)
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`/api/delivery/records?date=${installDate}&driverName=${encodeURIComponent(driverName)}&uploadType=${uploadType}`)
+      const data = await res.json()
+      setDetails(data.deliveries ?? [])
+    } catch {
+      setDetails([])
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
   const total = rows.reduce((s, d) => ({
     totalInstall: s.totalInstall + d.totalInstall,
     wallMount: s.wallMount + d.wallMount,
@@ -118,23 +168,91 @@ function DriverSummaryTable({ rows }: { rows: DriverSummaryItem[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((d, i) => (
-            <tr key={i} className={i % 2 === 0 ? '' : 'bg-gray-50'}>
-              <td className="border px-3 py-1.5 font-medium">
-                {d.driverName}
-                {d.matched === false && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
-              </td>
-              <td className="border px-3 py-1.5 text-xs text-gray-400 font-mono">{d.vehicleNo || '-'}</td>
-              <td className="border px-3 py-1.5 text-right text-gray-600">{d.deliveryCount}</td>
-              <td className="border px-3 py-1.5 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.wallMount, 'text-blue-600')}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.stand, 'text-green-600')}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.homeMulti, 'text-purple-600')}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.systemAc, 'text-gray-600')}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.moveInstall, 'text-yellow-600')}</td>
-              <td className="border px-3 py-1.5 text-center">{numCell(d.preVisit, 'text-orange-600')}</td>
-            </tr>
-          ))}
+          {rows.map((d, i) => {
+            const isExpanded = expandedDriver === d.driverName
+            return (
+              <Fragment key={i}>
+                <tr className={isExpanded ? 'bg-blue-50' : i % 2 === 0 ? '' : 'bg-gray-50'}>
+                  <td className="border px-3 py-1.5 font-medium">
+                    <button
+                      type="button"
+                      onClick={() => handleClickDriver(d.driverName)}
+                      className="text-blue-700 hover:text-blue-900 hover:underline cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <span className="text-xs text-gray-400">{isExpanded ? '▼' : '▶'}</span>
+                      {d.driverName}
+                    </button>
+                    {d.matched === false && <span className="ml-1 text-xs text-yellow-600 bg-yellow-50 px-1 rounded">미매칭</span>}
+                  </td>
+                  <td className="border px-3 py-1.5 text-xs text-gray-400 font-mono">{d.vehicleNo || '-'}</td>
+                  <td className="border px-3 py-1.5 text-right text-gray-600">{d.deliveryCount}</td>
+                  <td className="border px-3 py-1.5 text-right font-bold text-green-700 text-base">{d.totalInstall}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.wallMount, 'text-blue-600')}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.stand, 'text-green-600')}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.homeMulti, 'text-purple-600')}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.systemAc, 'text-gray-600')}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.moveInstall, 'text-yellow-600')}</td>
+                  <td className="border px-3 py-1.5 text-center">{numCell(d.preVisit, 'text-orange-600')}</td>
+                </tr>
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={10} className="border bg-blue-50/30 px-4 py-3">
+                      {detailLoading ? (
+                        <div className="text-center text-sm text-gray-400 py-3">배차 상세 로딩 중...</div>
+                      ) : details && details.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-xs text-gray-500 mb-2">
+                            {d.driverName} ({d.vehicleNo}) — 배차 {details.length}건 · 설치 {details.reduce((s, x) => s + x.totalInstall, 0)}대
+                          </div>
+                          <table className="w-full text-xs border-collapse bg-white">
+                            <thead>
+                              <tr className="bg-gray-50 text-gray-600">
+                                <th className="border px-2 py-1 text-left">Delivery 번호</th>
+                                <th className="border px-2 py-1 text-left">고객명</th>
+                                <th className="border px-2 py-1 text-left">모델 코드</th>
+                                <th className="border px-2 py-1 text-center">유형</th>
+                                <th className="border px-2 py-1 text-center">대수</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {details.flatMap((dv, idx) =>
+                                dv.items.map((it, j) => (
+                                  <tr key={`${idx}-${j}`} className={j === 0 ? 'border-t-2 border-t-gray-300' : ''}>
+                                    <td className="border px-2 py-1 font-mono text-gray-600">{j === 0 ? dv.deliveryNo : ''}</td>
+                                    <td className="border px-2 py-1">{j === 0 ? dv.customerName.replace(/\s*\(.*\)$/, '') : ''}</td>
+                                    <td className="border px-2 py-1 font-mono text-gray-700">{it.matnr}</td>
+                                    <td className="border px-2 py-1 text-center">
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                        it.modelType === 'WALL_MOUNT' ? 'bg-blue-50 text-blue-700' :
+                                        it.modelType === 'STAND' ? 'bg-green-50 text-green-700' :
+                                        it.modelType === 'HOME_MULTI' ? 'bg-purple-50 text-purple-700' :
+                                        it.modelType === 'SYSTEM_AC' ? 'bg-gray-100 text-gray-700' :
+                                        it.modelType === 'COMMERCIAL' ? 'bg-pink-50 text-pink-700' :
+                                        it.modelType === 'PRE_VISIT' ? 'bg-orange-50 text-orange-700' :
+                                        it.modelType === 'MOVE_INSTALL' ? 'bg-yellow-50 text-yellow-700' :
+                                        'bg-gray-50 text-gray-400'
+                                      }`}>
+                                        {MODEL_TYPE_KR[it.modelType] ?? it.modelType}
+                                      </span>
+                                    </td>
+                                    <td className="border px-2 py-1 text-center font-semibold">
+                                      {it.installCount > 0 ? it.installCount : <span className="text-gray-300">-</span>}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="text-center text-sm text-gray-400 py-3">배차 데이터 없음</div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-green-50 font-bold text-sm">
@@ -812,7 +930,15 @@ export default function UploadPage() {
                       )}
 
                       {getDriverSummary()
-                        ? <DriverSummaryTable rows={getDriverSummary()!} />
+                        ? <DriverSummaryTable
+                            rows={getDriverSummary()!}
+                            installDate={selectedDate ?? installDate}
+                            uploadType={
+                              uploadResult
+                                ? (uploadResult.uploadType as 'PREV_DELIVERY' | 'SAME_DAY_DELIVERY')
+                                : driverSubTab === 'sameday' ? 'SAME_DAY_DELIVERY' : 'PREV_DELIVERY'
+                            }
+                          />
                         : <p className="text-sm text-gray-400 text-center py-8">데이터가 없습니다</p>}
                     </div>
                   )}
