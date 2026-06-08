@@ -34,7 +34,8 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
 
   if (code.startsWith('AR')) {
     if (code.startsWith('ARR')) return 'UNKNOWN'
-    if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
+    // 끝 2자리가 모두 숫자 → 실외기. 단, 숫자+문자 (A0Q, B1Z 등)는 실내기 후보로 통과
+    if (/^\d{2}$/.test(code.slice(-2))) return 'UNKNOWN'
     if (code.endsWith('KO')) {
       const preKO = code.slice(0, -2)
       if (preKO.endsWith('X')) return 'UNKNOWN'                          // WXKO, HXKO = 실외기
@@ -51,7 +52,8 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
 
   if (code.startsWith('AF')) {
     if (code.startsWith('AFR')) return 'UNKNOWN'
-    if (/\d/.test(code.slice(-2))) return 'UNKNOWN'
+    // 끝 2자리가 모두 숫자 → 실외기. 단, 숫자+문자는 실내기 후보로 통과
+    if (/^\d{2}$/.test(code.slice(-2))) return 'UNKNOWN'
     // 홈멀티: 짧은 세트 코드(digit group ≤1개)에서만 W-suffix 적용 (AFWRS, AF18BSWRS 등)
     // 전체 품번(AF70F17D11WN)은 자릿수 그룹이 2개 이상 → 여기서 걸리지 않음
     const digitGroups = code.slice(2).match(/\d+/g) || []
