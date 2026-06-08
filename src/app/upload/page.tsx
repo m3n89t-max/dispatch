@@ -393,6 +393,10 @@ export default function UploadPage() {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
 
+  // SAP 자동 가져오기
+  const [sapImporting, setSapImporting] = useState(false)
+  const [sapMsg, setSapMsg] = useState('')
+
   // 기사 목록 로드
   useEffect(() => {
     fetch('/api/drivers')
@@ -476,6 +480,45 @@ export default function UploadPage() {
       setError(err instanceof Error ? err.message : '업로드 중 오류가 발생했습니다')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // SAP에서 자동 가져오기
+  const handleSapImport = async () => {
+    if (!confirm('SAP에서 배차 정보를 자동으로 가져옵니다.\n\n전제: SAP에 이미 로그인되어 있어야 합니다.\n진행하시겠습니까?')) return
+
+    setSapImporting(true)
+    setError('')
+    setUploadResult(null)
+    setViewData(null)
+    setVehicleAssign({})
+    setSapMsg('SAP 연결 중... (SAP GUI를 확인하세요)')
+
+    try {
+      const res = await fetch('/api/sap/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadType, installDate }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'SAP 가져오기 실패')
+
+      setUploadResult(json)
+      setSelectedDate(installDate)
+      if (json.comparison) setResultTab('compare')
+      else setResultTab('driver')
+
+      setSapMsg(`✓ ${json.sapDownloadedFile} (${json.totalRows}행, ${json.deliveryCount}건) 가져오기 완료`)
+
+      const d = new Date(installDate)
+      if (d.getFullYear() === calYear && d.getMonth() + 1 === calMonth) {
+        loadCalendar(calYear, calMonth)
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'SAP 가져오기 중 오류')
+      setSapMsg('')
+    } finally {
+      setSapImporting(false)
     }
   }
 
@@ -630,6 +673,35 @@ export default function UploadPage() {
                   className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 w-44"
                 />
               </div>
+
+              {/* SAP에서 자동 가져오기 */}
+              <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 text-center bg-blue-50/40 mb-3">
+                <button
+                  type="button"
+                  onClick={handleSapImport}
+                  disabled={sapImporting || !installDate}
+                  className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium text-sm inline-flex items-center gap-2"
+                >
+                  {sapImporting ? (
+                    <>
+                      <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      SAP에서 가져오는 중...
+                    </>
+                  ) : (
+                    <>📥 SAP에서 자동 가져오기</>
+                  )}
+                </button>
+                <p className="mt-2 text-xs text-gray-500">
+                  SAP에 로그인된 상태에서 클릭 → 자동 조회 + 업로드 (ZRLEK51270)
+                </p>
+                {sapMsg && (
+                  <p className={`mt-2 text-xs font-medium ${sapMsg.startsWith('✓') ? 'text-green-700' : 'text-blue-700'}`}>
+                    {sapMsg}
+                  </p>
+                )}
+              </div>
+
+              <div className="text-center text-xs text-gray-400 my-2">— 또는 수동으로 파일 업로드 —</div>
 
               {/* 파일 업로드 */}
               <form onSubmit={handleUpload} className="space-y-3">
