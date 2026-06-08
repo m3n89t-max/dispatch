@@ -121,24 +121,66 @@ async function parseExcel(
     rows.filter(r => !r.matched && r.vehicleNo).map(r => r.vehicleNo)
   )]
 
-  // ─── Delivery 단위 홈멀티 감지 후처리 ───────────────────────────────
-  // 같은 Delivery에서 실내기(WALL_MOUNT/STAND) 모델이 AF + AR 두 prefix 혼합으로 있으면
-  // 모두 HOME_MULTI로 변환. 같은 prefix(AR only 또는 AF only)면 일반 벽걸이/스탠드 유지.
-  // 예: 권*재 = AF70F17D24WRT + AR60F06D1A0Q → 홈멀티 2대
-  //     양*자/오***농원 = AR만 → 벽걸이 2대 (홈멀티 아님)
-  const indoorPrefixes = new Map<string, Set<string>>()
+  // ─── Delivery 단위 후처리 ───────────────────────────────────────────
+  // 1) 리모컨 검출: AFR(AF용) + ARR(AR용) 둘 다 있으면 홈멀티
+  // 2) 같은 model family의 다른 SKU(WS/WNKO/WXKO 등)는 1대로 통합
+  //    - family = matnr에서 W로 시작하는 trailing suffix 제거
+  //    - 같은 family에서 가장 자주 출현한 code의 횟수가 indoor 수
+  const remoteByDelivery = new Map<string, Set<string>>()
   for (const r of rows) {
-    if (r.modelType === 'WALL_MOUNT' || r.modelType === 'STAND') {
-      const prefix = r.matnr.startsWith('AF') ? 'AF' : r.matnr.startsWith('AR') ? 'AR' : 'OTHER'
-      if (!indoorPrefixes.has(r.deliveryNo)) indoorPrefixes.set(r.deliveryNo, new Set())
-      indoorPrefixes.get(r.deliveryNo)!.add(prefix)
+    const u = r.matnr.toUpperCase()
+    if (u.startsWith('AFR') || u.startsWith('ARR')) {
+      if (!remoteByDelivery.has(r.deliveryNo)) remoteByDelivery.set(r.deliveryNo, new Set())
+      remoteByDelivery.get(r.deliveryNo)!.add(u.startsWith('AFR') ? 'AFR' : 'ARR')
     }
   }
+
+  // AFR + ARR 둘 다 있는 Delivery → indoor 모두 HOME_MULTI로 변환
   for (const r of rows) {
-    const prefixes = indoorPrefixes.get(r.deliveryNo)
-    if (prefixes && prefixes.has('AF') && prefixes.has('AR')) {
+    const remotes = remoteByDelivery.get(r.deliveryNo)
+    if (remotes && remotes.has('AFR') && remotes.has('ARR')) {
       if (r.modelType === 'WALL_MOUNT' || r.modelType === 'STAND') {
         r.modelType = 'HOME_MULTI'
+      }
+    }
+  }
+
+  // Family 단위 dedup: 같은 family의 다른 SKU는 installCount=0으로 표시
+  // (UI에서 코드는 보이지만 합계엔 안 들어감)
+  // 예: WS + WNKO + WXKO → max(1,1) = 1대만 카운트
+  //     WS × 2 + WNKO → max(2,1) = 2대 카운트
+  const getFamily = (matnr: string) => {
+    // W로 시작하는 trailing suffix 제거 (예: WS, WNKO, WXKO, WRT, WN)
+    return matnr.replace(/W[A-Z]+(?:KO)?$/, '')
+  }
+
+  // Delivery 별로 family → code → records[] 맵 구성
+  const byDelivery = new Map<string, ParsedRecord[]>()
+  for (const r of rows) {
+    if (!byDelivery.has(r.deliveryNo)) byDelivery.set(r.deliveryNo, [])
+    byDelivery.get(r.deliveryNo)!.push(r)
+  }
+
+  for (const [, group] of byDelivery) {
+    const familyMap = new Map<string, Map<string, ParsedRecord[]>>()
+    for (const r of group) {
+      if (!['WALL_MOUNT', 'STAND', 'HOME_MULTI'].includes(r.modelType)) continue
+      const family = getFamily(r.matnr)
+      if (!familyMap.has(family)) familyMap.set(family, new Map())
+      const codeMap = familyMap.get(family)!
+      if (!codeMap.has(r.matnr)) codeMap.set(r.matnr, [])
+      codeMap.get(r.matnr)!.push(r)
+    }
+    // 각 family에서 가장 자주 나온 code만 installCount 유지
+    for (const [, codeMap] of familyMap) {
+      let maxCode = '', maxCount = 0
+      for (const [code, recs] of codeMap) {
+        if (recs.length > maxCount) { maxCount = recs.length; maxCode = code }
+      }
+      for (const [code, recs] of codeMap) {
+        if (code !== maxCode) {
+          for (const r of recs) r.installCount = 0
+        }
       }
     }
   }
@@ -178,12 +220,13 @@ function buildDriverSummary(records: ParsedRecord[]): DriverSummary[] {
     }
     const d = deliveryMap[r.deliveryNo]
     d.totalInstall += r.installCount
-    if (r.modelType === 'WALL_MOUNT') d.wallMount++
-    else if (r.modelType === 'STAND') d.stand++
-    else if (r.modelType === 'HOME_MULTI') d.homeMulti++
-    else if (r.modelType === 'SYSTEM_AC') d.systemAc++
-    else if (r.modelType === 'PRE_VISIT') d.preVisit++
-    else if (r.modelType === 'MOVE_INSTALL') d.moveInstall++
+    // installCount 기반 집계 (family dedup으로 0인 row는 카운트 안 함)
+    if (r.modelType === 'WALL_MOUNT') d.wallMount += r.installCount
+    else if (r.modelType === 'STAND') d.stand += r.installCount
+    else if (r.modelType === 'HOME_MULTI') d.homeMulti += r.installCount
+    else if (r.modelType === 'SYSTEM_AC') d.systemAc += r.installCount
+    else if (r.modelType === 'PRE_VISIT') d.preVisit += r.installCount
+    else if (r.modelType === 'MOVE_INSTALL') d.moveInstall += r.installCount
   }
 
   // 2단계: 기사별 집계

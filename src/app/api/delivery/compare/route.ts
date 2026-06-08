@@ -31,12 +31,13 @@ function buildDriverSummary(records: DbRecord[]) {
     }
     const d = deliveryMap[r.deliveryNo]
     d.totalInstall += r.installCount
-    if (r.modelType === 'WALL_MOUNT') d.wallMount++
-    else if (r.modelType === 'STAND') d.stand++
-    else if (r.modelType === 'HOME_MULTI') d.homeMulti++
-    else if (r.modelType === 'SYSTEM_AC') d.systemAc++
-    else if (r.modelType === 'PRE_VISIT') d.preVisit++
-    else if (r.modelType === 'MOVE_INSTALL') d.moveInstall++
+    // installCount 기반 (family dedup으로 0인 row는 카운트 안 함)
+    if (r.modelType === 'WALL_MOUNT') d.wallMount += r.installCount
+    else if (r.modelType === 'STAND') d.stand += r.installCount
+    else if (r.modelType === 'HOME_MULTI') d.homeMulti += r.installCount
+    else if (r.modelType === 'SYSTEM_AC') d.systemAc += r.installCount
+    else if (r.modelType === 'PRE_VISIT') d.preVisit += r.installCount
+    else if (r.modelType === 'MOVE_INSTALL') d.moveInstall += r.installCount
   }
 
   // 기사 단위 집계
