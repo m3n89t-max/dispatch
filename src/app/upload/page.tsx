@@ -219,7 +219,7 @@ function DriverSummaryTable({
                                 dv.items.map((it, j) => (
                                   <tr key={`${idx}-${j}`} className={j === 0 ? 'border-t-2 border-t-gray-300' : ''}>
                                     <td className="border px-2 py-1 font-mono text-gray-600">{j === 0 ? dv.deliveryNo : ''}</td>
-                                    <td className="border px-2 py-1">{j === 0 ? dv.customerName.replace(/\s*\(.*\)$/, '') : ''}</td>
+                                    <td className="border px-2 py-1">{j === 0 ? dv.customerName : ''}</td>
                                     <td className="border px-2 py-1 font-mono text-gray-700">{it.matnr}</td>
                                     <td className="border px-2 py-1 text-center">
                                       <span className={`px-1.5 py-0.5 rounded text-xs ${

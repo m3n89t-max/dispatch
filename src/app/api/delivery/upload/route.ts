@@ -35,10 +35,28 @@ function extractVehicleNo(values: unknown[]): string {
   return ''
 }
 
-function parseCustomerName(cn: string): { driverName: string; vehicleNo: string } {
-  const m = cn.match(/^(.+) \((.+)\)$/)
-  if (m) return { driverName: m[1], vehicleNo: m[2] }
-  return { driverName: cn, vehicleNo: '' }
+// SAP의 Customer 컬럼에서 마스킹된 고객명 추출
+// 예: "양*호", "백*엽", "허*****혜)", "d****영욱", "오***농원"
+function extractSapCustomer(values: unknown[]): string {
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (!s) continue
+    // *를 포함하는 마스킹 패턴 (한글 + * + 한글, 또는 영문 + * + 한글)
+    if (/\*/.test(s) && /^[가-힣A-Za-z()*]+$/.test(s) && s.length >= 2 && s.length <= 20) {
+      return s
+    }
+  }
+  return ''
+}
+
+function parseCustomerName(cn: string): { driverName: string; vehicleNo: string; sapCustomer: string } {
+  // customerName format: "기사명 (차량번호)|SAP고객" 또는 "기사명 (차량번호)"
+  const parts = cn.split('|')
+  const baseLabel = parts[0]
+  const sapCustomer = parts[1] || ''
+  const m = baseLabel.match(/^(.+) \((.+)\)$/)
+  if (m) return { driverName: m[1], vehicleNo: m[2], sapCustomer }
+  return { driverName: baseLabel, vehicleNo: '', sapCustomer }
 }
 
 interface ParsedRecord {
@@ -50,6 +68,7 @@ interface ParsedRecord {
   matnr: string
   modelType: string
   installCount: number
+  sapCustomer: string
 }
 
 async function parseExcel(
@@ -79,16 +98,22 @@ async function parseExcel(
     const augru = extractAugru(vals)
     const modelType = matnr ? judgeModelType(matnr, augru || undefined) : 'UNKNOWN'
     const installCount = getInstallCount(modelType as Parameters<typeof getInstallCount>[0])
+    const sapCustomer = extractSapCustomer(vals)
+
+    // customerName에 SAP 고객명을 함께 저장: "기사명 (차량번호)|SAP고객"
+    const baseLabel = matched ? `${driverName} (${vehicleNo})` : vehicleNo || 'UNKNOWN'
+    const customerName = sapCustomer ? `${baseLabel}|${sapCustomer}` : baseLabel
 
     rows.push({
       deliveryNo,
-      customerName: matched ? `${driverName} (${vehicleNo})` : vehicleNo || 'UNKNOWN',
+      customerName,
       vehicleNo,
       driverName,
       matched,
       matnr,
       modelType,
       installCount,
+      sapCustomer,
     })
   })
 

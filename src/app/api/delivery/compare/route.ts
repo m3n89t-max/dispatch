@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-function parseCustomerName(cn: string): { driverName: string; vehicleNo: string } {
-  const m = cn.match(/^(.+) \((.+)\)$/)
-  if (m) return { driverName: m[1], vehicleNo: m[2] }
-  return { driverName: cn, vehicleNo: '' }
+function parseCustomerName(cn: string): { driverName: string; vehicleNo: string; sapCustomer: string } {
+  // customerName format: "기사명 (차량번호)|SAP고객" 또는 "기사명 (차량번호)"
+  const parts = cn.split('|')
+  const baseLabel = parts[0]
+  const sapCustomer = parts[1] || ''
+  const m = baseLabel.match(/^(.+) \((.+)\)$/)
+  if (m) return { driverName: m[1], vehicleNo: m[2], sapCustomer }
+  return { driverName: baseLabel, vehicleNo: '', sapCustomer }
 }
 
 type DbRecord = { deliveryNo: string; customerName: string; modelType: string; installCount: number }

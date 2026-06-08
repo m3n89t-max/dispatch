@@ -44,9 +44,8 @@ export function judgeModelType(matnr: string, augru?: string): ModelType {
     const trailingAlpha = code.match(/[A-Z]+$/)
     if (trailingAlpha && trailingAlpha[0].endsWith('N')) return 'UNKNOWN'
     if (trailingAlpha && trailingAlpha[0].endsWith('X')) return 'UNKNOWN'
-    // full 품번(digit group ≥2)에서 T 종료 = 실외기 대체형 (ARWT 등 세트코드 제외)
-    const arDigitGroups = (code.match(/\d+/g) || []).length
-    if (arDigitGroups >= 2 && trailingAlpha && trailingAlpha[0].endsWith('T')) return 'UNKNOWN'
+    // AR full code의 W-suffix (WT, WRT 등) → 실내기 (벽걸이)
+    // 예: AR60F07D12WT, AR60F11D11WT
     return 'WALL_MOUNT'
   }
 
