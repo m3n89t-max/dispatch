@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # 다운로드 폴더 (watcher가 감시하는 곳)
-$DownloadDir = Join-Path $env:USERPROFILE "Desktop\배차진행정보"
+$DownloadDir = Join-Path $env:USERPROFILE "Desktop\차량별배차진행정보"
 if (-not (Test-Path $DownloadDir)) {
     New-Item -ItemType Directory -Force $DownloadDir | Out-Null
 }

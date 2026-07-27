@@ -38,26 +38,29 @@ cd "c:\Users\m3n89\Desktop\Dispatch\dispatch"
 }
 '@ | Out-File -Encoding utf8 tsconfig.test.json
 
-# __test_model.ts 생성
+# __test_model.ts 생성 (ZRLEJ56700 UNCOB 모델군 기반)
 @'
-const { judgeModelType, getInstallCount } = require('./src/lib/modelJudge')
+const { classifyUncob, resolveModelType, getInstallCount } = require('./src/lib/modelJudge')
+// [uncob, hasHmrac, isPreVisit, expectedType, expectedCount]
 const cases = [
-  ['ARWT',          undefined, 'WALL_MOUNT',  1],
-  ['AF09GT',        undefined, 'STAND',        1],
-  ['AFWRS',         undefined, 'HOME_MULTI',   1],
-  ['AF18HSGRS',     undefined, 'STAND',        1],
-  ['AC12345',       undefined, 'SYSTEM_AC',    1],
-  ['ARWT',          'ZL4',     'PRE_VISIT',    0],
-  ['AP072CNPPBH1',  undefined, 'COMMERCIAL',   1],
-  ['AF18HSGDBH1N',  undefined, 'UNKNOWN',      0],
-  ['AF90H17D01BX',  undefined, 'UNKNOWN',      0],
+  ['HMPACS18', false, false, 'STAND',        1],
+  ['HMPACS18', true,  false, 'HOME_MULTI',   1],
+  ['HMRAC',    true,  false, 'HOME_MULTI',   1],
+  ['RAC10',    false, false, 'WALL_MOUNT',   1],
+  ['PAC072',   false, false, 'COMMERCIAL',   1],
+  ['SYSS4W',   false, false, 'SYSTEM_4WAY',  1],
+  ['SYSS2W',   false, false, 'SYSTEM_1WAY',  1],
+  ['ACDAE',    false, false, 'UNKNOWN',      0],
+  ['ACOPTI',   false, false, 'UNKNOWN',      0],
+  ['ACOR10',   false, false, 'UNKNOWN',      0],
+  ['RAC10',    false, true,  'PRE_VISIT',    0],
 ]
 let pass = true
-for (const [matnr, augru, expectedType, expectedCount] of cases) {
-  const type = judgeModelType(matnr, augru)
+for (const [uncob, hasHmrac, isPreVisit, expectedType, expectedCount] of cases) {
+  const type = resolveModelType(classifyUncob(uncob), { hasHmrac, isPreVisit })
   const count = getInstallCount(type)
   const ok = type === expectedType && count === expectedCount
-  console.log(ok ? 'PASS' : 'FAIL', matnr, augru || '-', '->', type, count)
+  console.log(ok ? 'PASS' : 'FAIL', uncob, 'hmrac=' + hasHmrac, 'zl4=' + isPreVisit, '->', type, count)
   if (!ok) pass = false
 }
 console.log(pass ? '모든 케이스 통과' : '실패 케이스 있음')

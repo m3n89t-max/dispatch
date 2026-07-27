@@ -8,7 +8,12 @@
       "PowerShell($env:DATABASE_URL)",
       "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -c \"\\\\l\" 2>&1)",
       "Bash(npx ts-node *)",
-      "Bash(mkdir -p \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\run\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\validate\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\db\")"
+      "Bash(mkdir -p \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\run\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\validate\" \"c:\\\\Users\\\\m3n89\\\\Desktop\\\\Dispatch\\\\dispatch\\\\.claude\\\\skills\\\\db\")",
+      "Bash(rm -f \"D:/제주배차시스템_standalone_20260605.zip\")",
+      "Read(//d//**)",
+      "Bash(ls -la \"c:\\\\\\\\Users\\\\\\\\m3n89\\\\\\\\Desktop\\\\\\\\Dispatch\\\\\\\\dispatch\\\\\\\\.next\\\\\\\\standalone\\\\\\\\Desktop\\\\\\\\Dispatch\\\\\\\\dispatch\\\\\\\\download-sap\"*)",
+      "Bash(ls -la \"c:\\\\\\\\Users\\\\\\\\m3n89\\\\\\\\Desktop\\\\\\\\Dispatch\\\\\\\\dispatch\\\\\\\\download-sap\"*)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit)"
     ],
     "additionalDirectories": [
       "c:\\Users\\m3n89\\Desktop\\Dispatch\\dispatch\\.claude\\skills"

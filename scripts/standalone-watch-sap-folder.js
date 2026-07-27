@@ -1,14 +1,17 @@
-// 배차진행정보 폴더 감시 + 자동 업로드
+// 차량별배차진행정보 폴더 감시 + 자동 업로드
 // SAP에서 다운로드된 엑셀이 폴더에 떨어지면 자동으로 /api/delivery/upload 호출
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const WATCH_DIR = path.join(os.homedir(), 'Desktop', '배차진행정보');
+// C:\temp — SAP가 ZRLEJ56700.xlsx를 떨구는 폴더 (DRM 예외 임시경로)
+const WATCH_DIR = 'C:\\temp';
 const PROCESSED_DIR = path.join(WATCH_DIR, 'processed');
+const LOCK_FILE = path.join(WATCH_DIR, '.sap-import.lock');
 const SERVER_URL = process.env.WATCHER_SERVER_URL || 'http://localhost:3000';
 const POLL_MS = 2000;
 const STABILITY_MS = 1500; // 파일 쓰기 안정화 대기 (mtime 변경 없음)
+const LOCK_MAX_AGE_MS = 5 * 60 * 1000; // 5분 — sap-import 진행 중에는 watcher 스킵
 
 fs.mkdirSync(WATCH_DIR, { recursive: true });
 fs.mkdirSync(PROCESSED_DIR, { recursive: true });
@@ -52,6 +55,14 @@ async function uploadFile(filePath, fileName) {
 }
 
 async function scan() {
+  // sap-import API가 진행 중이면 충돌 방지 위해 스킵
+  try {
+    const lockStat = fs.statSync(LOCK_FILE);
+    if (Date.now() - lockStat.mtimeMs < LOCK_MAX_AGE_MS) return;
+    // lock이 너무 오래되면 stale로 간주 — 삭제 후 진행
+    try { fs.unlinkSync(LOCK_FILE); } catch {}
+  } catch {}
+
   let entries;
   try {
     entries = fs.readdirSync(WATCH_DIR, { withFileTypes: true });
@@ -61,7 +72,8 @@ async function scan() {
 
   for (const e of entries) {
     if (!e.isFile()) continue;
-    if (!e.name.toLowerCase().endsWith('.xlsx')) continue;
+    // SAP ZRLEJ56700 export (고정 파일명) 또는 구버전 EXPORT_YYYYMMDD_HHMMSS.xlsx
+    if (!/^ZRLEJ56700\.xlsx$/i.test(e.name) && !/^EXPORT_\d{8}_\d{6}\.xlsx$/i.test(e.name)) continue;
     if (processing.has(e.name)) continue;
 
     const full = path.join(WATCH_DIR, e.name);

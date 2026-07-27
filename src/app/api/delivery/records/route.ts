@@ -11,6 +11,15 @@ function parseCustomerName(cn: string): { driverName: string; vehicleNo: string;
   return { driverName: baseLabel, vehicleNo: '', sapCustomer }
 }
 
+// 주소를 읍/면/동/리 까지만 축약 (도로명·번지·건물·호수 제거)
+function shortAddr(a: string | null | undefined): string {
+  const s = (a ?? '').trim()
+  if (!s) return ''
+  const m = s.match(/^(.*?[동읍면리])(?:\s|$)/)
+  if (m) return m[1]
+  return s.split(/\s+/).slice(0, 3).join(' ')
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const date = searchParams.get('date')
@@ -55,6 +64,7 @@ export async function GET(request: NextRequest) {
   const deliveryMap = new Map<string, {
     deliveryNo: string
     customerName: string
+    address: string
     totalInstall: number
     items: { matnr: string; modelType: string; installCount: number }[]
   }>()
@@ -65,11 +75,13 @@ export async function GET(request: NextRequest) {
       deliveryMap.set(r.deliveryNo, {
         deliveryNo: r.deliveryNo,
         customerName: sapCustomer || r.customerName,
+        address: shortAddr(r.address),
         totalInstall: 0,
         items: [],
       })
     }
     const d = deliveryMap.get(r.deliveryNo)!
+    if (!d.address && r.address) d.address = shortAddr(r.address)
     d.totalInstall += r.installCount
     d.items.push({
       matnr: r.matnr,

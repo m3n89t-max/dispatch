@@ -59,6 +59,22 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link href="/safety" className="block">
+            <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-l-4 border-teal-500">
+              <h2 className="text-xl font-semibold text-gray-800">안전관리</h2>
+              <p className="text-gray-500 mt-2 text-sm">2층이상/저층 분리, 배달번호 주소 조회 (안전벨트 점검)</p>
+              <div className="mt-4 text-teal-600 text-sm font-medium">바로가기 →</div>
+            </div>
+          </Link>
+
+          <Link href="/vads" className="block">
+            <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border-l-4 border-blue-600">
+              <h2 className="text-xl font-semibold text-gray-800">VADS <span className="text-sm font-normal text-gray-400">(Visual Auto Dispatch System)</span></h2>
+              <p className="text-gray-500 mt-2 text-sm">전체 지도에서 동선·모델·2층/저층 보며 차량 배차 · 마커 클릭 배차</p>
+              <div className="mt-4 text-blue-600 text-sm font-medium">바로가기 →</div>
+            </div>
+          </Link>
+
         </div>
 
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">

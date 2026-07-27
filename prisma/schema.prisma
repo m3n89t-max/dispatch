@@ -248,11 +248,21 @@ model DeliveryRecord {
   modelType    String
   installCount Int    @default(0)
 
+  // 우편번호 기반 구역 분류 (docs/배차구역_우편번호.md)
+  zipcode  String? // 5자리 우편번호 (63xxx)
+  address  String? // 주소 텍스트 (보조 판정용)
+  region   String? // 'A' | 'B' | 'C' | 'D' | 'E' | 'UNKNOWN'
+
+  // PDA Step Status (설치 결과) — W열 매핑
+  pdaStatus   String? // 상태명 (설치/당일연기/취소/반품/통불 …)
+  pdaCategory String? // INSTALLED | POSTPONED_INSTALLED | POSTPONED | CANCELLED | RETURNED | FAILED | UNKNOWN
+
   session DeliverySession @relation(fields: [sessionId], references: [id])
 
   @@index([deliveryNo])
   @@index([customerName])
   @@index([sessionId])
+  @@index([region])
 }
 
 // 결근/부재 기록

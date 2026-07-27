@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as ExcelJS from 'exceljs'
-import { judgeModelType, getInstallCount } from '@/lib/modelJudge'
+import { classifyUncob, resolveModelType, getInstallCount } from '@/lib/modelJudge'
 
 // SAP 납기전 배차 엑셀 — 컬럼 위치를 고정하지 않고 값 스캔으로 감지
 
-// 모델코드 자동 감지: AR/AF/AC/L- 로 시작하는 값
+// 모델명(표시용) 자동 감지: AR/AF/AC/L- 로 시작하는 값
 function extractMatnr(values: unknown[]): string {
   for (const v of values) {
     const s = String(v ?? '').trim().toUpperCase()
@@ -15,6 +15,15 @@ function extractMatnr(values: unknown[]): string {
     ) {
       return s
     }
+  }
+  return ''
+}
+
+// UNCOB(모델군) 자동 감지: 카운팅 마커로 분류되는 값
+function extractUncob(values: unknown[]): string {
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (s && classifyUncob(s) !== 'EXCLUDE') return s.toUpperCase()
   }
   return ''
 }
@@ -99,6 +108,7 @@ export async function POST(request: NextRequest) {
       teamCode: string       // DB 매칭된 팀코드
       matched: boolean       // DB 매칭 여부
       matnr: string
+      uncob: string
       augru: string
       rawValues: (string | null)[]
     }
@@ -119,6 +129,7 @@ export async function POST(request: NextRequest) {
         teamCode: driver ? driver.teamCode : '',
         matched: !!driver,
         matnr: extractMatnr(vals),
+        uncob: extractUncob(vals),
         augru: extractAugru(vals),
         rawValues: vals.slice(1).map(v => v == null ? null : String(v)),
       })
@@ -135,12 +146,20 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // 모델 판정 및 설치대수 계산
+    // Delivery 단위 HMRAC 존재 여부 (홈멀티 판정용)
+    const hmracByDelivery = new Set<string>()
+    for (const row of rows) {
+      if (classifyUncob(row.uncob) === 'HMRAC') hmracByDelivery.add(row.deliveryNo || 'UNKNOWN')
+    }
+
+    // 모델 판정 및 설치대수 계산 (UNCOB 모델군 기반)
     const processedItems = rows.map(row => {
-      const modelType = row.matnr
-        ? judgeModelType(row.matnr, row.augru || undefined)
-        : 'UNKNOWN'
-      const installCount = getInstallCount(modelType as Parameters<typeof getInstallCount>[0])
+      const kind = classifyUncob(row.uncob)
+      const modelType = resolveModelType(kind, {
+        hasHmrac: hmracByDelivery.has(row.deliveryNo || 'UNKNOWN'),
+        isPreVisit: row.augru === 'ZL4',
+      })
+      const installCount = getInstallCount(modelType)
       return {
         deliveryNo: row.deliveryNo,
         vehicleNo: row.vehicleNo,
@@ -198,7 +217,7 @@ export async function POST(request: NextRequest) {
       if (item.modelType === 'WALL_MOUNT') d.wallMount++
       else if (item.modelType === 'STAND') d.stand++
       else if (item.modelType === 'HOME_MULTI') d.homeMulti++
-      else if (item.modelType === 'SYSTEM_AC') d.systemAc++
+      else if (item.modelType === 'SYSTEM_4WAY' || item.modelType === 'SYSTEM_1WAY' || item.modelType === 'SYSTEM_AC') d.systemAc++
       else if (item.modelType === 'PRE_VISIT') d.preVisit++
       else if (item.modelType === 'MOVE_INSTALL') d.moveInstall++
       else d.unknown++

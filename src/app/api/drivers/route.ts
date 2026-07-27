@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// 기사 리스트는 공유 DB(23.20.121.23) 실시간 반영 필수 → 캐시 금지(항상 최신 조회)
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -17,7 +21,7 @@ export async function GET(request: NextRequest) {
       orderBy: { teamCode: 'asc' },
     })
 
-    return NextResponse.json(drivers)
+    return NextResponse.json(drivers, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } })
   } catch (error) {
     console.error('Drivers GET error:', error)
     return NextResponse.json({ error: '조회 중 오류가 발생했습니다' }, { status: 500 })

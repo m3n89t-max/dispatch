@@ -15,16 +15,55 @@
 - 홈멀티 = 2
 - 시스템에어컨 = 1 (설치대수 포함, **"시스템"으로 별도 표기**)
 
-### 모델 규칙
-- MATNR startswith `AC` → 시스템에어컨/천정형 (1, [시스템] 별도 표기)
-- MATNR startswith `AP` → 업소용 ([업소용] 별도 표기, 1)
-- MATNR startswith `AR` → 벽걸이 (1)
-- MATNR startswith `AF` + W로 시작하는 suffix (WN, WRS, WZN, WZRS 등) → 홈멀티 실내기 (1)
-- MATNR startswith `AF` + N/X로 끝나는 suffix → 실외기 → 제외 (0)
-- MATNR startswith `AF` → 스탠드 (1)
+### 모델구분 (UNCOB 모델군 기반 — 품번 패턴 파싱 폐기)
+ZRLEJ56700 리포트의 **UNCOB(모델군)** 컬럼 접두사로 판별. 구현: [src/lib/modelJudge.ts](src/lib/modelJudge.ts) `classifyUncob` + `resolveModelType`.
+- `RAC*` → 벽걸이(1)
+- `PAC*` → 업소용(1)
+- `HMRAC*` → 홈멀티 마커(1)
+- `HMPAC(S)*` → **같은 고객(Delivery)에 HMRAC 있으면 홈멀티, 없으면 스탠드** (1)
+- `SYSS4W*` → 4웨이 시스템(1) / `SYSS2W*` → 원웨이 시스템(1)
+- `LAIR*` → 이전설치(이사, L-MAIR) (1)
+- 그 외(`ACO*`, `ACDAE`, `TACOPTI` 등) → 실외기·부속 = 제외(0)
+- 실내기 1대당 카운팅 마커 UNCOB가 1개뿐 → 동일 실내기 중복 SKU 카운트 문제 자동 해소
 
 ### 예외
-- AUGRU = ZL4 → 사전방문 → 설치대수 제외
+- SO Reason = ZL4 → 사전방문 → 설치대수 제외 (UNCOB보다 우선)
+
+---
+
+## ZRLEJ56700 데이터 / 자동화 / UI (2026-06 전환 요약)
+
+### 파일 포맷 (중요)
+SAP "스프레드시트 export(EXDL)"는 확장자만 .xlsx인 **MHTML(HTML)** 인 경우가 많음 → ExcelJS는 `Can't find end of central directory`로 실패. 파서 [delivery/upload/route.ts](src/app/api/delivery/upload/route.ts) `bufferToMatrix`가 **zip(PK)=진짜 xlsx / MHTML·HTML 표 / TSV·CSV** 를 자동 판별해 행렬로 변환 후 동일 로직 처리.
+
+### ZRLEJ56700 컬럼 (헤더명 기준 파싱 — [delivery/upload/route.ts](src/app/api/delivery/upload/route.ts))
+| 컬럼 | 용도 |
+|------|------|
+| Route | 601 서귀포 / 602 제주시 |
+| Material | 모델명(표시용) |
+| **UNCOB** | 모델군 → 설치대수 판정 |
+| SO Reason | ZL4 = 사전방문 제외 |
+| SalesDLTime | 고객요청일(YYYY-MM-DD) → 과거=연기, 미래=선설치 |
+| ShipToPostalCode | 우편번호 → ABCD 구역 ([zipcodeRegion.ts](src/lib/zipcodeRegion.ts)) |
+| ShipToAddress | 배달주소 |
+| Vehicle Number(Full) | 차량번호 → 기사 매칭 |
+| Freight Order | 배차(Delivery) 단위 키 |
+| ShipToPartyName | 고객명(마스킹) |
+
+### SAP 자동 다운로드
+- 트랜잭션 **ZRLEJ56700** (기존 ZRLEK51270 폐기)
+- 선택화면: `S_RWERKS-LOW`(플랜트, 기본 **L106**) + `S_CARCD-LOW`(**CA06E**), 날짜 파라미터 없음
+- export: ALV toolbar **EXDL** → 저장 → 덮어쓰기 항상 "예"
+- **저장/감시 폴더 = `C:\temp`** (보안 PC DRM 예외 임시경로 — 바탕화면 폴더는 DRM 암호화됨), 파일명 **`ZRLEJ56700.xlsx` 고정**, VBS는 저장 다이얼로그에 전체 경로 직접 입력
+- 스크립트: VBS 생성기 [add-vbs-method.js](scripts/add-vbs-method.js)(주), ps1/watcher는 [rebuild-standalone-full.js](scripts/rebuild-standalone-full.js)가 생성. import 경로 [sap/import/route.ts](src/app/api/sap/import/route.ts)는 body.plant/carrierCode.
+- USB 배포: `next build` → `node scripts/rebuild-standalone-full.js` → `node scripts/add-vbs-method.js` → `.next/standalone/.../dispatch` 를 USB(`D:\제주배차시스템_standalone_20260605`)로 robocopy `/E`
+
+### 업로드 탭 UI ([upload/page.tsx](src/app/upload/page.tsx))
+- 전일/당일 토글·비교탭 제거 (단일 업로드)
+- 결과 = 2단: 좌(📊 대시보드 + 🚚 기사별 요약) / 우(🗺 구역 분포 + 지도, 항시 표시)
+- 대시보드: 차량투입(팀)·배송(건)·설치(대)·연기·선설치 / 모델별 / 구역별(A~E)
+- 날짜 = 컴퓨터 날짜 기준 자동(진입 시 오늘 자동 조회)
+- 과거 날짜 구역/지도: [compare/route.ts](src/app/api/delivery/compare/route.ts)가 저장 region으로 재구성 (단, 연기/선설치는 업로드 시점만)
 
 ---
 
@@ -98,16 +137,16 @@ node node_modules/typescript/bin/tsc --noEmit
 CLAUDE.md의 2단계는 참고용입니다. 실제 검증은 `/validate` 스킬을 사용하세요 (TypeScript 파일이라 ts-node 필요).
 
 ```bash
-# validate 스킬 케이스 (tsconfig.test.json + ts-node 방식으로 실행)
-# ARWT    → WALL_MOUNT (1)   벽걸이
-# AF09GT  → STAND (1)        스탠드
-# AFWRS   → HOME_MULTI (1)   홈멀티 실내기
-# AF18HSGRS → STAND (1)      스탠드 (GRS suffix)
-# AC12345 → SYSTEM_AC (1)    시스템에어컨
-# ARWT+ZL4 → PRE_VISIT (0)   사전방문
-# AP072CNPPBH1 → COMMERCIAL (1) 업소용
-# AF18HSGDBH1N → UNKNOWN (0) 실외기 (N-ending)
-# AF90H17D01BX → UNKNOWN (0) 실외기 (X-ending/BX)
+# validate 스킬 케이스 (UNCOB 모델군 기반, classifyUncob + resolveModelType)
+# HMPACS18 (단독)      → STAND (1)        스탠드
+# HMPACS18 + HMRAC     → HOME_MULTI (1)   같은 고객에 HMRAC 동반 시 홈멀티
+# HMRAC                → HOME_MULTI (1)   홈멀티 실내기 마커
+# RAC10 / RAC6         → WALL_MOUNT (1)   벽걸이
+# PAC*                 → COMMERCIAL (1)   업소용
+# SYSS4W               → SYSTEM_4WAY (1)  4웨이 시스템
+# SYSS2W               → SYSTEM_1WAY (1)  원웨이 시스템
+# ACDAE/ACOPTI/ACOR*   → UNKNOWN (0)      실외기/부속 제외
+# (UNCOB 무관) ZL4     → PRE_VISIT (0)    사전방문 (SO Reason)
 ```
 
 ### 3단계 — 빌드 확인

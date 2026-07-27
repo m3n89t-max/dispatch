@@ -67,6 +67,11 @@ const STATUS_CLASSES: Record<string, string> = {
   ON_LEAVE: 'bg-yellow-100 text-yellow-700',
 }
 
+// VADS 자동배차용 차량 설정 (공유 DB VehicleConfig) — 기사 관리에서 일괄 설정
+const CFG_MODELS = ['시스템에어컨', '업소용', '홈멀티', '스탠드', '벽걸이', '이전설치']
+interface VehCfg { maxCount: number; models: string[]; lowOnly: boolean; active: boolean; region: string; modelsOnly?: boolean }
+const DEF_CFG: VehCfg = { maxCount: 0, models: [], lowOnly: false, active: true, region: '', modelsOnly: false }
+
 const yn = (v: boolean) => (v ? 'O' : 'X')
 const dt = (v: string | null) =>
   v ? new Date(v).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }) : '-'
@@ -189,6 +194,22 @@ export default function DriversPage() {
   const [filterRoute, setFilterRoute] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
 
+  // VADS 차량 설정 (차량번호 기준) — 로드 + 저장
+  const [vcfg, setVcfg] = useState<Record<string, VehCfg>>({})
+  useEffect(() => {
+    fetch('/api/safety/vehicle-config', { cache: 'no-store' }).then(r => r.json())
+      .then(d => { if (d?.configs) setVcfg(d.configs) }).catch(() => { /* noop */ })
+  }, [])
+  const saveCfg = (veh: string, patch: Partial<VehCfg>) => {
+    if (!veh) return
+    const cur: VehCfg = { ...DEF_CFG, ...vcfg[veh], ...patch }
+    setVcfg(c => ({ ...c, [veh]: cur }))
+    fetch('/api/safety/vehicle-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vehicleNo: veh, maxCount: cur.maxCount, models: cur.models, lowOnly: cur.lowOnly, active: cur.active, region: cur.region, modelsOnly: !!cur.modelsOnly }),
+    }).catch(() => { /* noop */ })
+  }
+
   // 등록 폼
   const [showAddForm, setShowAddForm] = useState(false)
   const [addForm, setAddForm] = useState<FormData>(EMPTY_FORM)
@@ -207,7 +228,7 @@ export default function DriversPage() {
       const params = new URLSearchParams()
       if (filterRoute) params.set('route', filterRoute)
       if (filterStatus) params.set('status', filterStatus)
-      const res = await fetch(`/api/drivers?${params}`)
+      const res = await fetch(`/api/drivers?${params}`, { cache: 'no-store' })
       const data = await res.json()
       setDrivers(Array.isArray(data) ? data : [])
     } catch {
@@ -309,25 +330,16 @@ export default function DriversPage() {
         <h1 className="text-xl font-bold">기사 관리</h1>
       </header>
 
-      <main className="max-w-full px-4 py-6">
-        {/* Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-6 max-w-xl">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-gray-700">{drivers.length}</div>
-            <div className="text-xs text-gray-500 mt-1">전체 기사</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{activeCount}</div>
-            <div className="text-xs text-gray-500 mt-1">정상 운영</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">{suspendedCount}</div>
-            <div className="text-xs text-gray-500 mt-1">배차 정지</div>
-          </div>
+      <main className="max-w-full px-4 py-3">
+        {/* Summary — 목록이 한 화면에 최대한 들어오도록 한 줄로 압축 */}
+        <div className="bg-white rounded-lg shadow px-4 py-2 mb-2 inline-flex items-center gap-5 text-sm">
+          <span className="text-gray-600">전체 기사 <b className="text-base text-gray-800">{drivers.length}</b></span>
+          <span className="text-gray-600">정상 운영 <b className="text-base text-green-600">{activeCount}</b></span>
+          <span className="text-gray-600">배차 정지 <b className="text-base text-red-600">{suspendedCount}</b></span>
         </div>
 
         {/* Controls */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap gap-4 items-end justify-between">
+        <div className="bg-white rounded-lg shadow px-4 py-2 mb-2 flex flex-wrap gap-4 items-end justify-between">
           <div className="flex gap-3 flex-wrap">
             <div>
               <label className={labelCls}>권역</label>
@@ -397,6 +409,7 @@ export default function DriversPage() {
           </div>
         )}
 
+        <p className="text-xs text-gray-500 mb-2">※ <b>가능대수 · 저층전용 · 선호모델</b>은 VADS 자동배차용 차량 설정입니다. 여기서 바꾸면 즉시 공유 DB에 저장되어 VADS에 반영됩니다.</p>
         {/* 목록 테이블 */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {loading ? (
@@ -410,6 +423,7 @@ export default function DriversPage() {
                   <tr>
                     {[
                       '센터', '차량번호', '영업용구분', 'ID', '이름', '차량구조',
+                      '가능대수', '저층전용', '선호모델',
                       '셀명', '셀구분', '상주여부',
                       '계약완료', '계약예상일', '계약종료일',
                       '보수교육', '보수교육일',
@@ -417,67 +431,107 @@ export default function DriversPage() {
                       '타센터가능', '가능센터',
                       '상태', '상태변경', '수정', '삭제',
                     ].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-medium border-b">{h}</th>
+                      <th key={h} className="px-2 py-1.5 text-left text-gray-500 font-medium border-b">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {drivers.map((d, i) => (
                     <tr key={d.id} className={`border-t ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
-                      <td className="px-3 py-2">{d.center || '-'}</td>
-                      <td className="px-3 py-2">{d.vehicleNumber || '-'}</td>
-                      <td className="px-3 py-2">{d.vehicleType || '-'}</td>
-                      <td className="px-3 py-2 font-mono">{d.teamCode}</td>
-                      <td className="px-3 py-2 font-medium">{d.teamName}</td>
-                      <td className="px-3 py-2">{d.vehicleStructure || '-'}</td>
-                      <td className="px-3 py-2">{d.cellName || '-'}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">{d.center || '-'}</td>
+                      <td className="px-2 py-1">{d.vehicleNumber || '-'}</td>
+                      <td className="px-2 py-1">{d.vehicleType || '-'}</td>
+                      <td className="px-2 py-1 font-mono">{d.teamCode}</td>
+                      <td className="px-2 py-1 font-medium">{d.teamName}</td>
+                      <td className="px-2 py-1">{d.vehicleStructure || '-'}</td>
+                      {(() => {
+                        const v = d.vehicleNumber || ''
+                        if (!v) return <><td className="px-2 py-1 text-gray-300">-</td><td className="px-2 py-1 text-center text-gray-300">-</td><td className="px-2 py-1 text-gray-300">-</td></>
+                        const cfg: VehCfg = { ...DEF_CFG, ...vcfg[v] }
+                        return (
+                          <>
+                            <td className="px-2 py-1">
+                              <input type="number" min={0} value={cfg.maxCount || 0}
+                                onChange={e => saveCfg(v, { maxCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                className="w-12 border rounded px-1 py-0.5 text-center" title="가능 대수 (0=무제한)" />
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              <input type="checkbox" checked={!!cfg.lowOnly}
+                                onChange={e => saveCfg(v, { lowOnly: e.target.checked })}
+                                className="w-4 h-4 accent-green-600 cursor-pointer" title="체크 시 2층이상 배정 안 함" />
+                            </td>
+                            <td className="px-2 py-1">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {CFG_MODELS.map(m => {
+                                  const on = cfg.models.includes(m)
+                                  return (
+                                    <button key={m} type="button"
+                                      onClick={() => saveCfg(v, { models: on ? cfg.models.filter(x => x !== m) : [...cfg.models, m] })}
+                                      className={`px-1.5 py-0.5 rounded-full text-[11px] border ${on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
+                                      {m}
+                                    </button>
+                                  )
+                                })}
+                                {cfg.models.length > 0 && (
+                                  <label className="ml-1 inline-flex items-center gap-0.5 text-[11px] text-rose-600 cursor-pointer" title="체크 시 선호모델만 배정(하드 제약) — 자동배차가 다른 모델을 배정하지 않음">
+                                    <input type="checkbox" checked={!!cfg.modelsOnly}
+                                      onChange={e => saveCfg(v, { modelsOnly: e.target.checked })}
+                                      className="w-3.5 h-3.5 accent-rose-600" />전용
+                                  </label>
+                                )}
+                              </div>
+                            </td>
+                          </>
+                        )
+                      })()}
+                      <td className="px-2 py-1">{d.cellName || '-'}</td>
+                      <td className="px-2 py-1">
                         {d.cellRole ? (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${d.cellRole === '셀리더' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
                             {d.cellRole}
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">
                         {d.residency ? (
                           <span className={`px-1.5 py-0.5 rounded text-xs ${d.residency === '상주' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
                             {d.residency}
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-3 py-2 text-center font-semibold">{yn(d.contractDone)}</td>
-                      <td className="px-3 py-2">{dt(d.contractExpectedDate)}</td>
-                      <td className="px-3 py-2">{dt(d.contractEndDate)}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{yn(d.safetyEduDone)}</td>
-                      <td className="px-3 py-2">{dt(d.safetyEduDate)}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{yn(d.expertSecured)}</td>
-                      <td className="px-3 py-2">{dt(d.expertExpectedDate)}</td>
-                      <td className="px-3 py-2">{d.expertRelation || '-'}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{yn(d.canSupportOther)}</td>
-                      <td className="px-3 py-2">{d.supportableCenters || '-'}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1 text-center font-semibold">{yn(d.contractDone)}</td>
+                      <td className="px-2 py-1">{dt(d.contractExpectedDate)}</td>
+                      <td className="px-2 py-1">{dt(d.contractEndDate)}</td>
+                      <td className="px-2 py-1 text-center font-semibold">{yn(d.safetyEduDone)}</td>
+                      <td className="px-2 py-1">{dt(d.safetyEduDate)}</td>
+                      <td className="px-2 py-1 text-center font-semibold">{yn(d.expertSecured)}</td>
+                      <td className="px-2 py-1">{dt(d.expertExpectedDate)}</td>
+                      <td className="px-2 py-1">{d.expertRelation || '-'}</td>
+                      <td className="px-2 py-1 text-center font-semibold">{yn(d.canSupportOther)}</td>
+                      <td className="px-2 py-1">{d.supportableCenters || '-'}</td>
+                      <td className="px-2 py-1">
                         <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STATUS_CLASSES[d.status] || 'bg-gray-100 text-gray-600'}`}>
                           {STATUS_LABELS[d.status] || d.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">
                         <select value={d.status} onChange={e => handleStatusChange(d.id, e.target.value)}
-                          className="border rounded px-2 py-1 text-xs">
+                          className="border rounded px-1.5 py-0.5 text-[11px]">
                           <option value="ACTIVE">정상</option>
                           <option value="SUSPENDED">배차정지</option>
                           <option value="CONTRACT_ENDED">계약종료</option>
                           <option value="ON_LEAVE">휴무</option>
                         </select>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">
                         <button onClick={() => openEdit(d)}
-                          className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">
+                          className="bg-blue-500 text-white px-1.5 py-0.5 rounded text-[11px] hover:bg-blue-600">
                           수정
                         </button>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-1">
                         <button onClick={() => handleDelete(d.id, d.teamName)}
-                          className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
+                          className="bg-red-500 text-white px-1.5 py-0.5 rounded text-[11px] hover:bg-red-700">
                           삭제
                         </button>
                       </td>

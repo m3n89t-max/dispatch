@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as ExcelJS from 'exceljs'
-import { judgeModelType, getInstallCount } from '@/lib/modelJudge'
+import { classifyUncob, resolveModelType, getInstallCount } from '@/lib/modelJudge'
 
 // SAP 엑셀 파싱 (배차/납기확정/설치완료 공통) — 컬럼 위치 스캔 방식
 
+// 모델명(표시용): AR/AF/AC/L- 로 시작하는 값
 function extractMatnr(values: unknown[]): string {
   for (const v of values) {
     const s = String(v ?? '').trim().toUpperCase()
     if (s.startsWith('AR') || s.startsWith('AF') || s.startsWith('AC') || s.startsWith('L-')) {
       return s
     }
+  }
+  return ''
+}
+
+// UNCOB(모델군): 카운팅 마커로 분류되는 값
+function extractUncob(values: unknown[]): string {
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (s && classifyUncob(s) !== 'EXCLUDE') return s.toUpperCase()
   }
   return ''
 }
@@ -53,8 +63,8 @@ async function parseExcel(
   const worksheet = workbook.getWorksheet(1)
   if (!worksheet) throw new Error('워크시트를 찾을 수 없습니다')
 
-  const records: { deliveryNo: string; customerName: string; matnr: string; modelType: string; installCount: number }[] = []
-
+  // 1차: 행 수집 (UNCOB/모델명/차량/사전방문)
+  const raws: { deliveryNo: string; matnr: string; uncob: string; isPreVisit: boolean; driverName: string }[] = []
   worksheet.eachRow((row: ExcelJS.Row, rowNumber: number) => {
     if (rowNumber === 1) return
     const vals = row.values as unknown[]
@@ -62,10 +72,6 @@ async function parseExcel(
     const deliveryNo = extractDeliveryNo(vals)
     if (!deliveryNo) return
 
-    const matnr = extractMatnr(vals)
-    const augru = extractAugru(vals)
-
-    // 차량번호 → 기사명 매칭 (vehicleMap이 있으면 "기사명 (차량번호)", 없으면 차량번호)
     const vehicleNo = extractVehicleNo(vals)
     const vehicleKey = vehicleNo.replace(/\s/g, '').toUpperCase()
     const matchedName = vehicleMap.get(vehicleKey)
@@ -73,11 +79,30 @@ async function parseExcel(
       ? `${matchedName} (${vehicleNo})`
       : vehicleNo || 'UNKNOWN'
 
-    const modelType = matnr ? judgeModelType(matnr, augru || undefined) : 'UNKNOWN'
-    const installCount = getInstallCount(modelType as Parameters<typeof getInstallCount>[0])
-
-    records.push({ deliveryNo, customerName: driverName, matnr, modelType, installCount })
+    raws.push({
+      deliveryNo,
+      matnr: extractMatnr(vals),
+      uncob: extractUncob(vals),
+      isPreVisit: extractAugru(vals) === 'ZL4',
+      driverName,
+    })
   })
+
+  // 2차: Delivery 단위 HMRAC 존재 여부 → 모델 판정 (UNCOB 모델군 기반)
+  const hmracByDelivery = new Set<string>()
+  for (const r of raws) {
+    if (classifyUncob(r.uncob) === 'HMRAC') hmracByDelivery.add(r.deliveryNo)
+  }
+
+  const records: { deliveryNo: string; customerName: string; matnr: string; modelType: string; installCount: number }[] = []
+  for (const r of raws) {
+    const modelType = resolveModelType(classifyUncob(r.uncob), {
+      hasHmrac: hmracByDelivery.has(r.deliveryNo),
+      isPreVisit: r.isPreVisit,
+    })
+    const installCount = getInstallCount(modelType)
+    records.push({ deliveryNo: r.deliveryNo, customerName: r.driverName, matnr: r.matnr, modelType, installCount })
+  }
 
   return records
 }
